@@ -135,6 +135,9 @@ export default class Downloader {
 
       const foundMetadata = extractObject<WakanimDRMMetadata>(unparsed, this._isWakanimDRMMetadata);
 
+      const rqId: string | undefined = await page.evaluate(() => (window as any).rqId);
+      const rqIdS: string | undefined = await page.evaluate(() => (window as any).rqIdS);
+
       if (foundMetadata) {
         return foundMetadata;
       }
