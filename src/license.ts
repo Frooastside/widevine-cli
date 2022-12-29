@@ -1,28 +1,25 @@
 import { randomBytes, randomInt } from "crypto";
 import { readFileSync } from "fs";
+import Long from "long";
+import * as forge from "node-forge";
+import { AES_CMAC } from "./cmac.js";
 import {
-  SignedDeviceCertificate,
+  ClientIdentification,
+  License,
+  LicenseRequest,
+  LicenseRequest_RequestType,
+  LicenseType,
+  ProtocolVersion,
   SignedMessage,
   SignedMessage_MessageType,
-  WidevineCencHeader,
-  SignedLicenseRequest,
-  ClientIdentification,
-  SignedLicenseRequest_MessageType,
-  LicenseType,
-  LicenseRequest_RequestType,
-  ProtocolVersion,
-  EncryptedClientIdentification
-} from "./wv_proto3.js";
-import * as forge from "node-forge";
+  SignedMessage_SessionKeyType,
+  WidevinePsshData
+} from "./license_protocol.js";
 
 const WIDEVINE_SYSTEM_ID = new Uint8Array([237, 239, 139, 169, 121, 214, 74, 206, 163, 200, 39, 220, 213, 29, 33, 237]);
 
 const identifierBlob = readFileSync("security/device_client_id_blob");
 const privateKey = readFileSync("security/device_private_key");
-
-type Device = {
-  privateKey: string;
-};
 
 export type Key = {
   kid: string;
@@ -30,98 +27,130 @@ export type Key = {
 };
 
 export class WVDecryptior {
-  constructor(pssh: string, device: CDM, cert: string | undefined) {
-    console.log(pssh);
-  }
-}
-
-export function checkPSSH(pssh: Buffer): boolean {
-  return pssh.subarray(12, 28).equals(Buffer.from(WIDEVINE_SYSTEM_ID));
-}
-
-export class CDM {
   private _sessions: {
     [key: string]: Session[];
   } = {};
+  constructor(pssh: Buffer) {
+    console.log(pssh);
+  }
 
-  parsePSSH(pssh: Buffer): WidevineCencHeader | null {
-    try {
-      return WidevineCencHeader.decode(pssh.subarray(32));
-    } catch {
-      return null;
-    }
+  checkPSSH(pssh: Buffer): boolean {
+    return pssh.subarray(12, 28).equals(Buffer.from(WIDEVINE_SYSTEM_ID));
   }
 }
 
 export class Session {
+  private _devicePrivateKey: forge.pki.rsa.PrivateKey;
   private _identifier: Buffer;
   private _pssh: Buffer;
-  private _privacyMode = false;
-  private _serviceCertificate?: SignedDeviceCertificate;
+  private _rawLicenseRequest?: Buffer;
 
   constructor(pssh: Buffer) {
+    this._devicePrivateKey = forge.pki.privateKeyFromPem(privateKey.toString());
     this._identifier = this._generateIdentifier();
     this._pssh = pssh;
   }
 
-  getLicenseRequest(): string {
+  createLicenseRequest(): Buffer {
     const clientIdentification = ClientIdentification.decode(identifierBlob);
-    const cenc = this.parsePSSH(this._pssh);
-    if (!cenc) {
-      throw new Error("cenc error!");
+    const pssh = this.parsePSSH(this._pssh);
+    if (!pssh) {
+      throw new Error("pssh error!");
     }
-    /*const licenseRequest: SignedLicenseRequest = {
-      Type: SignedLicenseRequest_MessageType.LICENSE_REQUEST,
-      Msg: {
-        Type: LicenseRequest_RequestType.NEW,
-        ContentId: {
-          CencId: {
-            Pssh: cenc,
-            LicenseType: LicenseType.DEFAULT,
-            RequestId: this._identifier
-          },
-          WebmId: undefined,
-          License: undefined
-        },
-        RequestTime: Date.now(),
-        ProtocolVersion: ProtocolVersion.CURRENT,
-        KeyControlNonce: randomInt(2 ** 31),
-        KeyControlNonceDeprecated: Buffer.alloc(0),
-        ClientId: clientIdentification,
-        EncryptedClientId: this._encryptClientIdentification()
-      }
-    };*/
 
-    return "";
+    const licenseRequest: LicenseRequest = {
+      type: LicenseRequest_RequestType.NEW,
+      clientId: clientIdentification,
+      contentId: {
+        widevinePsshData: {
+          psshData: [this._pssh.subarray(32)],
+          licenseType: LicenseType.AUTOMATIC,
+          requestId: this._identifier
+        }
+      },
+      requestTime: new Long(Date.now()),
+      protocolVersion: ProtocolVersion.VERSION_2_2,
+      keyControlNonce: randomInt(2 ** 31),
+      keyControlNonceDeprecated: Buffer.alloc(0),
+      encryptedClientId: undefined
+    };
+
+    this._rawLicenseRequest = Buffer.from(LicenseRequest.encode(licenseRequest).finish());
+
+    const hash = forge.sha1.create();
+    hash.update(this._rawLicenseRequest.toString());
+    const signature = this._devicePrivateKey.sign(hash);
+
+    console.log("signature", signature);
+
+    const signedLicenseRequest: SignedMessage = {
+      type: SignedMessage_MessageType.LICENSE_REQUEST,
+      msg: this._rawLicenseRequest,
+      signature: Buffer.from(signature),
+      sessionKey: Buffer.alloc(0),
+      remoteAttestation: Buffer.alloc(0),
+      metricData: [],
+      serviceVersionInfo: undefined,
+      sessionKeyType: SignedMessage_SessionKeyType.UNDEFINED,
+      oemcryptoCoreMessage: Buffer.alloc(0)
+    };
+
+    return Buffer.from(SignedMessage.encode(signedLicenseRequest).finish());
   }
 
-  /*private _encryptClientIdentification(): EncryptedClientIdentification {
-    try {
-      forge.pki.create;
-      const encryptedClientIdentification: EncryptedClientIdentification = {};
-    } catch {
-      throw new Error("Method not implemented.");
+  parseLicense(rawLicense: Buffer) {
+    if (!this._rawLicenseRequest) {
+      throw new Error("Request a license first!");
     }
-  }*/
+    const signedLicense = SignedMessage.decode(rawLicense);
+    const sessionKey = this._devicePrivateKey.decrypt(signedLicense.sessionKey.toString());
+    console.log(sessionKey);
 
-  parsePSSH(pssh: Buffer): WidevineCencHeader | null {
+    const cmac = new AES_CMAC(Buffer.from(sessionKey));
+
+    const encKeyBase = `ENCRYPTION\x00${this._rawLicenseRequest}\x00\x00\x00\x80`;
+    const authKeyBase = `AUTHENTICATION\x00${this._rawLicenseRequest}\x00\x00\x02\x00`;
+
+    const encKey = cmac.calculate(Buffer.from(`\x01${encKeyBase}`));
+    const authKey1 = cmac.calculate(Buffer.from(`\x01${authKeyBase}`));
+    const authKey2 = cmac.calculate(Buffer.from(`\x02${authKeyBase}`));
+    const authKey3 = cmac.calculate(Buffer.from(`\x03${authKeyBase}`));
+    const authKey4 = cmac.calculate(Buffer.from(`\x04${authKeyBase}`));
+
+    const hmac = forge.hmac.create();
+    hmac.start("sha256", `${authKey1.toString()}${authKey2.toString()}`);
+    hmac.update(signedLicense.msg.toString());
+    const calculatedSignature = hmac.digest().toHex();
+
+    console.log("calc, received", calculatedSignature, signedLicense.msg.toString("hex"));
+
+    if (calculatedSignature !== signedLicense.msg.toString("hex")) {
+      throw new Error("Signatures do not match!");
+    }
+
+    const license = License.decode(signedLicense.msg);
+
+    for (const keyContainer of license.key) {
+      const keyId = keyContainer.id.length ? keyContainer.id.toString() : keyContainer.type.toString();
+      const decipher = forge.cipher.createDecipher("AES-CBC", forge.util.createBuffer(encKey));
+      decipher.start({ iv: forge.util.createBuffer(keyContainer.iv) });
+      decipher.update(forge.util.createBuffer(keyContainer.key));
+      decipher.finish();
+      const decryptedKey = Buffer.from(decipher.output.toHex(), "hex");
+      const key: Key = {
+        kid: keyId,
+        key: decryptedKey.toString()
+      };
+      console.log(`${keyId}:${decryptedKey.toString()}`, key, decryptedKey.toString("hex"));
+    }
+  }
+
+  parsePSSH(pssh: Buffer): WidevinePsshData | null {
     try {
-      return WidevineCencHeader.decode(pssh.subarray(32));
+      return WidevinePsshData.decode(pssh.subarray(32));
     } catch {
       return null;
     }
-  }
-
-  parseServiceMessage(certificate: Buffer) {
-    try {
-      const message = SignedMessage.decode(certificate);
-      if (message.Type !== SignedMessage_MessageType.UNRECOGNIZED) {
-        this._serviceCertificate = SignedDeviceCertificate.decode(message.Msg);
-      } else {
-        this._serviceCertificate = SignedDeviceCertificate.decode(certificate);
-      }
-      this._privacyMode = true;
-    } catch (error) {}
   }
 
   private _generateIdentifier(): Buffer {
