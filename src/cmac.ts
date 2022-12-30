@@ -1,18 +1,18 @@
-import forge from "node-forge";
+import crypto from "crypto";
 
 export class AES_CMAC {
   private readonly BLOCK_SIZE = 16;
   private readonly XOR_RIGHT = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x87]);
   private readonly EMPTY_BLOCK_SIZE_BUFFER = Buffer.alloc(this.BLOCK_SIZE);
 
+  private _key: Buffer;
   private _subkeys: { first: Buffer; second: Buffer };
-  private _cipher: forge.cipher.BlockCipher;
 
   public constructor(key: Buffer) {
     if (![16, 24, 32].includes(key.length)) {
       throw new Error("Key size must be 128, 192, or 256 bits.");
     }
-    this._cipher = forge.cipher.createCipher("AES-CBC", forge.util.createBuffer(key));
+    this._key = key;
     this._subkeys = this._generateSubkeys();
   }
 
@@ -57,11 +57,10 @@ export class AES_CMAC {
   }
 
   private _aes(message: Buffer): Buffer {
-    this._cipher.start({ iv: forge.util.createBuffer(this.EMPTY_BLOCK_SIZE_BUFFER) });
-    this._cipher.update(forge.util.createBuffer(message));
-    this._cipher.finish();
-
-    return Buffer.from(this._cipher.output.toHex(), "hex").subarray(0, 16);
+    const cipher = crypto.createCipheriv(`aes-${this._key.length * 8}-cbc`, this._key, Buffer.alloc(this.BLOCK_SIZE));
+    const result = cipher.update(message).subarray(0, 16);
+    cipher.destroy();
+    return result;
   }
 
   private _getLastBlock(message: Buffer): Buffer {

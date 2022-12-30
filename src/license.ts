@@ -1,7 +1,6 @@
-import { randomBytes, randomInt } from "crypto";
+import crypto from "crypto";
 import { readFileSync } from "fs";
 import Long from "long";
-import * as forge from "node-forge";
 import { AES_CMAC } from "./cmac.js";
 import {
   ClientIdentification,
@@ -31,7 +30,7 @@ export class WVDecryptior {
     [key: string]: Session[];
   } = {};
   constructor(pssh: Buffer) {
-    console.log(pssh);
+    console.log("pssh", Buffer.from(pssh).toString("hex"));
   }
 
   checkPSSH(pssh: Buffer): boolean {
@@ -40,20 +39,22 @@ export class WVDecryptior {
 }
 
 export class Session {
-  private _devicePrivateKey: forge.pki.rsa.PrivateKey;
+  private _devicePrivateKey: crypto.KeyObject;
   private _identifier: Buffer;
   private _pssh: Buffer;
   private _rawLicenseRequest?: Buffer;
 
   constructor(pssh: Buffer) {
-    this._devicePrivateKey = forge.pki.privateKeyFromPem(privateKey.toString());
+    this._devicePrivateKey = crypto.createPrivateKey(privateKey);
     this._identifier = this._generateIdentifier();
+    console.log("identifier", this._identifier.toString());
     this._pssh = pssh;
   }
 
   createLicenseRequest(): Buffer {
     const clientIdentification = ClientIdentification.decode(identifierBlob);
-    const pssh = this.parsePSSH(this._pssh);
+    ClientIdentification;
+    const pssh = this._parsePSSH(this._pssh);
     if (!pssh) {
       throw new Error("pssh error!");
     }
@@ -64,24 +65,26 @@ export class Session {
       contentId: {
         widevinePsshData: {
           psshData: [this._pssh.subarray(32)],
-          licenseType: LicenseType.AUTOMATIC,
+          licenseType: LicenseType.STREAMING,
           requestId: this._identifier
         }
       },
       requestTime: new Long(Date.now()),
-      protocolVersion: ProtocolVersion.VERSION_2_2,
-      keyControlNonce: randomInt(2 ** 31),
+      protocolVersion: ProtocolVersion.VERSION_2_1,
+      keyControlNonce: crypto.randomInt(2 ** 31),
       keyControlNonceDeprecated: Buffer.alloc(0),
       encryptedClientId: undefined
     };
 
+    console.log("license request", LicenseRequest.toJSON(licenseRequest));
     this._rawLicenseRequest = Buffer.from(LicenseRequest.encode(licenseRequest).finish());
 
-    const hash = forge.sha1.create();
-    hash.update(this._rawLicenseRequest.toString());
-    const signature = this._devicePrivateKey.sign(hash);
+    const signature = crypto
+      .createSign("sha1")
+      .update(this._rawLicenseRequest)
+      .sign({ key: this._devicePrivateKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING });
 
-    console.log("signature", signature);
+    console.log("signature", Buffer.from(signature).toString("hex"));
 
     const signedLicenseRequest: SignedMessage = {
       type: SignedMessage_MessageType.LICENSE_REQUEST,
@@ -103,8 +106,8 @@ export class Session {
       throw new Error("Request a license first!");
     }
     const signedLicense = SignedMessage.decode(rawLicense);
-    const sessionKey = this._devicePrivateKey.decrypt(signedLicense.sessionKey.toString());
-    console.log(sessionKey);
+    const sessionKey = crypto.privateDecrypt(this._devicePrivateKey, signedLicense.sessionKey);
+    console.log("session key", sessionKey);
 
     const cmac = new AES_CMAC(Buffer.from(sessionKey));
 
@@ -117,14 +120,13 @@ export class Session {
     const authKey3 = cmac.calculate(Buffer.from(`\x03${authKeyBase}`));
     const authKey4 = cmac.calculate(Buffer.from(`\x04${authKeyBase}`));
 
-    const hmac = forge.hmac.create();
-    hmac.start("sha256", `${authKey1.toString()}${authKey2.toString()}`);
-    hmac.update(signedLicense.msg.toString());
-    const calculatedSignature = hmac.digest().toHex();
+    const hmac = crypto.createHmac("sha256", Buffer.concat([authKey1, authKey2]));
+    hmac.update(signedLicense.msg);
+    const calculatedSignature = hmac.digest();
 
-    console.log("calc, received", calculatedSignature, signedLicense.msg.toString("hex"));
+    console.log("calc, received", calculatedSignature.toString("hex"), signedLicense.msg.toString("hex"));
 
-    if (calculatedSignature !== signedLicense.msg.toString("hex")) {
+    if (!calculatedSignature.equals(signedLicense.msg)) {
       throw new Error("Signatures do not match!");
     }
 
@@ -132,11 +134,9 @@ export class Session {
 
     for (const keyContainer of license.key) {
       const keyId = keyContainer.id.length ? keyContainer.id.toString() : keyContainer.type.toString();
-      const decipher = forge.cipher.createDecipher("AES-CBC", forge.util.createBuffer(encKey));
-      decipher.start({ iv: forge.util.createBuffer(keyContainer.iv) });
-      decipher.update(forge.util.createBuffer(keyContainer.key));
-      decipher.finish();
-      const decryptedKey = Buffer.from(decipher.output.toHex(), "hex");
+      const decipher = crypto.createDecipheriv(`aes-${encKey.length * 8}-cbc`, encKey, keyContainer.iv);
+      const decryptedKey = decipher.update(keyContainer.key);
+      decipher.destroy();
       const key: Key = {
         kid: keyId,
         key: decryptedKey.toString()
@@ -145,7 +145,7 @@ export class Session {
     }
   }
 
-  parsePSSH(pssh: Buffer): WidevinePsshData | null {
+  private _parsePSSH(pssh: Buffer): WidevinePsshData | null {
     try {
       return WidevinePsshData.decode(pssh.subarray(32));
     } catch {
@@ -154,7 +154,8 @@ export class Session {
   }
 
   private _generateIdentifier(): Buffer {
-    return Buffer.from(`${randomBytes(8).toString("hex")}${"01"}${"00000000000000"}`, "hex");
+    //return Buffer.from(`${randomBytes(8).toString("hex")}${"01"}${"00000000000000"}`, "hex");
+    return Buffer.from(`${"ABD82DC915BC20D0DCF832930DA7F197"}${"01"}${"00000000000000"}`, "ascii");
   }
 
   get pssh(): Buffer {

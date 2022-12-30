@@ -1,16 +1,10 @@
+import { writeFileSync } from "fs";
+import fetch from "node-fetch";
 import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { cookies } from "./cookie-parser.js";
 import { extractObject } from "./extractor.js";
-
-/*declare module "puppeteer" {
-  interface Page extends RecaptchaPluginPageAdditions {
-    __eslinterror: never;
-  }
-  interface Frame extends RecaptchaPluginPageAdditions {
-    __eslinterror: never;
-  }
-}*/
+import { from64, Session } from "./license.js";
 
 type WakanimDRMMetadata = {
   file: string;
@@ -91,6 +85,7 @@ export default class Downloader {
       });
 
       await mainPage.waitForSelector("#main-iframe, #breakpoints");
+      await delay(2000);
       const result = await mainPage.solveRecaptchas();
       if (result.captchas.length > 0) {
         await mainPage.waitForSelector("#main-iframe, #breakpoints");
@@ -98,8 +93,43 @@ export default class Downloader {
 
       const metadata = await this._analyzeScripts(mainPage);
 
-      if (metadata) {
-        return JSON.stringify(metadata);
+      if (metadata === null) {
+        throw new Error("Metdata is missing!");
+      }
+
+      const rqId: string | undefined = await mainPage.evaluate(() => (window as any).rqId);
+      const rqIdS: string | undefined = await mainPage.evaluate(() => (window as any).rqIdS);
+
+      if (!rqId || !rqIdS) {
+        throw new Error("Essential fields were missing!");
+      }
+
+      const session = new Session(from64("AAAAMnBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAABISEDAbv7geMkJXmSnpWrtC0mE="));
+
+      console.log(metadata.drm.widevine.url);
+
+      const licenseRequest = session.createLicenseRequest();
+
+      writeFileSync("./security/request_blob", licenseRequest);
+      writeFileSync("./security/request_blob_hex", licenseRequest.toString("hex"));
+
+      const response = await fetch(metadata.drm.widevine.url, {
+        method: "POST",
+        body: licenseRequest,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+          authorization: metadata.drm.widevine.headers[0].value,
+          userid: metadata.drm.widevine.headers[1].value,
+          d1: metadata.drm.widevine.headers[2].value,
+          rqid: rqId,
+          rqids: rqIdS
+        }
+      });
+
+      console.log(response.ok, response.status);
+
+      if (response.ok) {
+        session.parseLicense(Buffer.from(await response.arrayBuffer()));
       }
     } catch (error) {
       console.error(error);
@@ -121,22 +151,8 @@ export default class Downloader {
         continue;
       }
       const unparsed = script.innerHTML.trim();
-      //const index = scripts.findIndex((compare) => compare === script);
-      /*const path = await script.handle.evaluate((element) => {
-        let path = `[${element.tagName}:${element.id}:${element.className}]`;
-        let parent: HTMLElement | null;
-        let current: HTMLElement = element;
-        while ((parent = current.parentElement) !== null) {
-          path = `[${parent.tagName}:${parent.id}:${parent.className}]/${path}`;
-          current = parent;
-        }
-        return path;
-      });*/
 
       const foundMetadata = extractObject<WakanimDRMMetadata>(unparsed, this._isWakanimDRMMetadata);
-
-      const rqId: string | undefined = await page.evaluate(() => (window as any).rqId);
-      const rqIdS: string | undefined = await page.evaluate(() => (window as any).rqIdS);
 
       if (foundMetadata) {
         return foundMetadata;
