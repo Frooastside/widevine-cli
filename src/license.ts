@@ -84,7 +84,7 @@ export class Session {
     const signature = crypto
       .createSign("sha1")
       .update(this._rawLicenseRequest)
-      .sign({ key: this._devicePrivateKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING });
+      .sign({ key: this._devicePrivateKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength: 20 });
 
     console.log("signature", Buffer.from(signature).toString("hex"));
 
