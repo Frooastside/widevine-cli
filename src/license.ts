@@ -103,42 +103,42 @@ export class Session {
     }
     const signedLicense = SignedMessage.decode(rawLicense);
     const sessionKey = crypto.privateDecrypt(this._devicePrivateKey, signedLicense.sessionKey);
-    console.log("session key", sessionKey);
 
     const cmac = new AES_CMAC(Buffer.from(sessionKey));
 
-    const encKeyBase = `ENCRYPTION\x00${this._rawLicenseRequest}\x00\x00\x00\x80`;
-    const authKeyBase = `AUTHENTICATION\x00${this._rawLicenseRequest}\x00\x00\x02\x00`;
+    const encKeyBase = Buffer.concat([Buffer.from("ENCRYPTION"), Buffer.from("\x00"), this._rawLicenseRequest, Buffer.from("\x00\x00\x00\x80")]);
+    const authKeyBase = Buffer.concat([Buffer.from("AUTHENTICATION"), Buffer.from("\x00"), this._rawLicenseRequest, Buffer.from("\x00\x00\x02\x00")]);
 
-    const encKey = cmac.calculate(Buffer.from(`\x01${encKeyBase}`));
-    const authKey1 = cmac.calculate(Buffer.from(`\x01${authKeyBase}`));
-    const authKey2 = cmac.calculate(Buffer.from(`\x02${authKeyBase}`));
-    const authKey3 = cmac.calculate(Buffer.from(`\x03${authKeyBase}`));
-    const authKey4 = cmac.calculate(Buffer.from(`\x04${authKeyBase}`));
+    const encKey = cmac.calculate(Buffer.concat([Buffer.from("\x01"), encKeyBase]));
+    const serverKey = Buffer.concat([
+      cmac.calculate(Buffer.concat([Buffer.from("\x01"), authKeyBase])),
+      cmac.calculate(Buffer.concat([Buffer.from("\x02"), authKeyBase]))
+    ]);
+    const clientKey = Buffer.concat([
+      cmac.calculate(Buffer.concat([Buffer.from("\x03"), authKeyBase])),
+      cmac.calculate(Buffer.concat([Buffer.from("\x04"), authKeyBase]))
+    ]);
 
-    const hmac = crypto.createHmac("sha256", Buffer.concat([authKey1, authKey2]));
-    hmac.update(signedLicense.msg);
-    const calculatedSignature = hmac.digest();
+    const calculatedSignature = crypto.createHmac("sha256", serverKey).update(signedLicense.msg).digest();
 
-    console.log("calc, received", calculatedSignature.toString("hex"), signedLicense.msg.toString("hex"));
-
-    if (!calculatedSignature.equals(signedLicense.msg)) {
+    if (!calculatedSignature.equals(signedLicense.signature)) {
       throw new Error("Signatures do not match!");
     }
 
     const license = License.decode(signedLicense.msg);
 
-    for (const keyContainer of license.key) {
-      const keyId = keyContainer.id.length ? keyContainer.id.toString() : keyContainer.type.toString();
+    return license.key.map((keyContainer) => {
+      const keyId = keyContainer.id.length ? keyContainer.id.toString("hex") : keyContainer.type.toString();
       const decipher = crypto.createDecipheriv(`aes-${encKey.length * 8}-cbc`, encKey, keyContainer.iv);
       const decryptedKey = decipher.update(keyContainer.key);
       decipher.destroy();
       const key: Key = {
         kid: keyId,
-        key: decryptedKey.toString()
+        key: decryptedKey.toString("hex")
       };
-      console.log(`${keyId}:${decryptedKey.toString()}`, key, decryptedKey.toString("hex"));
-    }
+      console.log(`${keyContainer.type.toString()}, ${key.kid}:${key.key}`);
+      return key;
+    });
   }
 
   private _parsePSSH(pssh: Buffer): WidevinePsshData | null {
@@ -150,8 +150,7 @@ export class Session {
   }
 
   private _generateIdentifier(): Buffer {
-    //return Buffer.from(`${randomBytes(8).toString("hex")}${"01"}${"00000000000000"}`, "hex");
-    return Buffer.from(`${"ABD82DC915BC20D0DCF832930DA7F197"}${"01"}${"00000000000000"}`, "ascii");
+    return Buffer.from(`${crypto.randomBytes(8).toString("hex")}${"01"}${"00000000000000"}`);
   }
 
   get pssh(): Buffer {
