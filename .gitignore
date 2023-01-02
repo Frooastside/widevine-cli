@@ -144,7 +144,4 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/node
 
 security/
-
-parsed_*.txt
-tokens_*_*.txt
-script_*.txt
+tests.ts
