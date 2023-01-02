@@ -47,7 +47,6 @@ export class Session {
   constructor(pssh: Buffer) {
     this._devicePrivateKey = crypto.createPrivateKey(privateKey);
     this._identifier = this._generateIdentifier();
-    console.log("identifier", this._identifier.toString());
     this._pssh = pssh;
   }
 
@@ -76,17 +75,12 @@ export class Session {
       encryptedClientId: undefined
     };
 
-    console.log("license request", LicenseRequest.toJSON(licenseRequest));
-    writeFileSync("security/raw_license_ss", Buffer.from(LicenseRequest.encode(licenseRequest).finish()));
-    writeFileSync("security/raw_license_se", LicenseRequest.encode(licenseRequest).finish());
     this._rawLicenseRequest = Buffer.from(LicenseRequest.encode(licenseRequest).finish());
 
     const signature = crypto
       .createSign("sha1")
       .update(this._rawLicenseRequest)
       .sign({ key: this._devicePrivateKey, padding: crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength: 20 });
-
-    console.log("signature", Buffer.from(signature).toString("hex"));
 
     const signedLicenseRequest: SignedMessage = {
       type: SignedMessage_MessageType.LICENSE_REQUEST,
