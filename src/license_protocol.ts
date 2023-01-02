@@ -1835,7 +1835,9 @@ export const LicenseIdentification = {
     if (message.purchaseId.length !== 0) {
       writer.uint32(26).bytes(message.purchaseId);
     }
-    writer.uint32(32).int32(message.type);
+    if (message.type !== 1) {
+      writer.uint32(32).int32(message.type);
+    }
     if (message.version !== 0) {
       writer.uint32(40).int32(message.version);
     }
@@ -1847,7 +1849,7 @@ export const LicenseIdentification = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseIdentification {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseIdentification();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -1969,7 +1971,7 @@ export const License = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2150,7 +2152,7 @@ export const License_Policy = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_Policy {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_Policy();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2319,8 +2321,12 @@ export const License_KeyContainer = {
     if (message.key.length !== 0) {
       writer.uint32(26).bytes(message.key);
     }
-    writer.uint32(32).int32(message.type);
-    writer.uint32(40).int32(message.level);
+    if (message.type !== 1) {
+      writer.uint32(32).int32(message.type);
+    }
+    if (message.level !== 1) {
+      writer.uint32(40).int32(message.level);
+    }
     if (message.requiredProtection !== undefined) {
       License_KeyContainer_OutputProtection.encode(message.requiredProtection, writer.uint32(50).fork()).ldelim();
     }
@@ -2347,7 +2353,7 @@ export const License_KeyContainer = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_KeyContainer {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_KeyContainer();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2492,7 +2498,7 @@ export const License_KeyContainer_KeyControl = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_KeyContainer_KeyControl {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_KeyContainer_KeyControl();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2560,7 +2566,7 @@ export const License_KeyContainer_OutputProtection = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_KeyContainer_OutputProtection {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_KeyContainer_OutputProtection();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2639,7 +2645,7 @@ export const License_KeyContainer_VideoResolutionConstraint = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_KeyContainer_VideoResolutionConstraint {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_KeyContainer_VideoResolutionConstraint();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2715,7 +2721,7 @@ export const License_KeyContainer_OperatorSessionKeyPermissions = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): License_KeyContainer_OperatorSessionKeyPermissions {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicense_KeyContainer_OperatorSessionKeyPermissions();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2791,7 +2797,9 @@ export const LicenseRequest = {
     if (message.contentId !== undefined) {
       LicenseRequest_ContentIdentification.encode(message.contentId, writer.uint32(18).fork()).ldelim();
     }
-    writer.uint32(24).int32(message.type);
+    if (message.type !== 1) {
+      writer.uint32(24).int32(message.type);
+    }
     if (!message.requestTime.isZero()) {
       writer.uint32(32).int64(message.requestTime);
     }
@@ -2812,7 +2820,7 @@ export const LicenseRequest = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -2923,7 +2931,7 @@ export const LicenseRequest_ContentIdentification = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest_ContentIdentification {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest_ContentIdentification();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3009,7 +3017,9 @@ export const LicenseRequest_ContentIdentification_WidevinePsshData = {
     for (const v of message.psshData) {
       writer.uint32(10).bytes(v!);
     }
-    writer.uint32(16).int32(message.licenseType);
+    if (message.licenseType !== 1) {
+      writer.uint32(16).int32(message.licenseType);
+    }
     if (message.requestId.length !== 0) {
       writer.uint32(26).bytes(message.requestId);
     }
@@ -3018,7 +3028,7 @@ export const LicenseRequest_ContentIdentification_WidevinePsshData = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest_ContentIdentification_WidevinePsshData {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest_ContentIdentification_WidevinePsshData();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3080,7 +3090,9 @@ export const LicenseRequest_ContentIdentification_WebmKeyId = {
     if (message.header.length !== 0) {
       writer.uint32(10).bytes(message.header);
     }
-    writer.uint32(16).int32(message.licenseType);
+    if (message.licenseType !== 1) {
+      writer.uint32(16).int32(message.licenseType);
+    }
     if (message.requestId.length !== 0) {
       writer.uint32(26).bytes(message.requestId);
     }
@@ -3089,7 +3101,7 @@ export const LicenseRequest_ContentIdentification_WebmKeyId = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest_ContentIdentification_WebmKeyId {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest_ContentIdentification_WebmKeyId();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3166,7 +3178,7 @@ export const LicenseRequest_ContentIdentification_ExistingLicense = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest_ContentIdentification_ExistingLicense {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest_ContentIdentification_ExistingLicense();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3232,11 +3244,15 @@ function createBaseLicenseRequest_ContentIdentification_InitData(): LicenseReque
 
 export const LicenseRequest_ContentIdentification_InitData = {
   encode(message: LicenseRequest_ContentIdentification_InitData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    writer.uint32(8).int32(message.initDataType);
+    if (message.initDataType !== 1) {
+      writer.uint32(8).int32(message.initDataType);
+    }
     if (message.initData.length !== 0) {
       writer.uint32(18).bytes(message.initData);
     }
-    writer.uint32(24).int32(message.licenseType);
+    if (message.licenseType !== 1) {
+      writer.uint32(24).int32(message.licenseType);
+    }
     if (message.requestId.length !== 0) {
       writer.uint32(34).bytes(message.requestId);
     }
@@ -3245,7 +3261,7 @@ export const LicenseRequest_ContentIdentification_InitData = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): LicenseRequest_ContentIdentification_InitData {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseLicenseRequest_ContentIdentification_InitData();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3317,7 +3333,7 @@ export const MetricData = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): MetricData {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseMetricData();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3368,7 +3384,9 @@ function createBaseMetricData_TypeValue(): MetricData_TypeValue {
 
 export const MetricData_TypeValue = {
   encode(message: MetricData_TypeValue, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    writer.uint32(8).int32(message.type);
+    if (message.type !== 1) {
+      writer.uint32(8).int32(message.type);
+    }
     if (!message.value.isZero()) {
       writer.uint32(16).int64(message.value);
     }
@@ -3377,7 +3395,7 @@ export const MetricData_TypeValue = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): MetricData_TypeValue {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseMetricData_TypeValue();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3435,7 +3453,7 @@ export const VersionInfo = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): VersionInfo {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseVersionInfo();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3492,7 +3510,9 @@ function createBaseSignedMessage(): SignedMessage {
 
 export const SignedMessage = {
   encode(message: SignedMessage, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    writer.uint32(8).int32(message.type);
+    if (message.type !== 1) {
+      writer.uint32(8).int32(message.type);
+    }
     if (message.msg.length !== 0) {
       writer.uint32(18).bytes(message.msg);
     }
@@ -3522,7 +3542,7 @@ export const SignedMessage = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): SignedMessage {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseSignedMessage();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3657,7 +3677,7 @@ export const ClientIdentification = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): ClientIdentification {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseClientIdentification();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3766,7 +3786,7 @@ export const ClientIdentification_NameValue = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): ClientIdentification_NameValue {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseClientIdentification_NameValue();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3835,16 +3855,26 @@ export const ClientIdentification_ClientCapabilities = {
     if (message.videoResolutionConstraints === true) {
       writer.uint32(24).bool(message.videoResolutionConstraints);
     }
-    writer.uint32(32).int32(message.maxHdcpVersion);
+    if (message.maxHdcpVersion !== 0) {
+      writer.uint32(32).int32(message.maxHdcpVersion);
+    }
     if (message.oemCryptoApiVersion !== 0) {
       writer.uint32(40).uint32(message.oemCryptoApiVersion);
     }
-    writer.uint32(48).bool(message.antiRollbackUsageTable);
+    if (message.antiRollbackUsageTable === true) {
+      writer.uint32(48).bool(message.antiRollbackUsageTable);
+    }
     if (message.srmVersion !== 0) {
       writer.uint32(56).uint32(message.srmVersion);
     }
-    writer.uint32(64).bool(message.canUpdateSrm);
-    writer.uint32(72).uint32(0);
+    if (message.canUpdateSrm === true) {
+      writer.uint32(64).bool(message.canUpdateSrm);
+    }
+    writer.uint32(74).fork();
+    for (const v of message.supportedCertificateKeyType) {
+      writer.int32(v);
+    }
+    writer.ldelim();
     if (message.analogOutputCapabilities !== 0) {
       writer.uint32(80).int32(message.analogOutputCapabilities);
     }
@@ -3859,7 +3889,7 @@ export const ClientIdentification_ClientCapabilities = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): ClientIdentification_ClientCapabilities {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseClientIdentification_ClientCapabilities();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -3995,7 +4025,7 @@ export const ClientIdentification_ClientCredentials = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): ClientIdentification_ClientCredentials {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseClientIdentification_ClientCredentials();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4068,7 +4098,7 @@ export const EncryptedClientIdentification = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): EncryptedClientIdentification {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseEncryptedClientIdentification();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4197,7 +4227,7 @@ export const DrmCertificate = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): DrmCertificate {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseDrmCertificate();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4331,7 +4361,7 @@ export const DrmCertificate_EncryptionKey = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): DrmCertificate_EncryptionKey {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseDrmCertificate_EncryptionKey();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4395,7 +4425,7 @@ export const SignedDrmCertificate = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): SignedDrmCertificate {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseSignedDrmCertificate();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4521,7 +4551,7 @@ export const WidevinePsshData = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): WidevinePsshData {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseWidevinePsshData();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4685,7 +4715,7 @@ export const WidevinePsshData_EntitledKey = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): WidevinePsshData_EntitledKey {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseWidevinePsshData_EntitledKey();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4762,7 +4792,7 @@ export const FileHashes = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): FileHashes {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseFileHashes();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4833,7 +4863,7 @@ export const FileHashes_Signature = {
 
   decode(input: _m0.Reader | Uint8Array, length?: number): FileHashes_Signature {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
+    let end = length === undefined ? reader.len : reader.pos + length;
     const message = createBaseFileHashes_Signature();
     while (reader.pos < end) {
       const tag = reader.uint32();
@@ -4892,10 +4922,10 @@ export const FileHashes_Signature = {
   }
 };
 
-declare let self: any | undefined;
-declare let window: any | undefined;
-declare let global: any | undefined;
-const tsProtoGlobalThis: any = (() => {
+declare var self: any | undefined;
+declare var window: any | undefined;
+declare var global: any | undefined;
+var tsProtoGlobalThis: any = (() => {
   if (typeof globalThis !== "undefined") {
     return globalThis;
   }
