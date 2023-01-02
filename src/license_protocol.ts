@@ -3835,26 +3835,16 @@ export const ClientIdentification_ClientCapabilities = {
     if (message.videoResolutionConstraints === true) {
       writer.uint32(24).bool(message.videoResolutionConstraints);
     }
-    if (message.maxHdcpVersion !== 0) {
-      writer.uint32(32).int32(message.maxHdcpVersion);
-    }
+    writer.uint32(32).int32(message.maxHdcpVersion);
     if (message.oemCryptoApiVersion !== 0) {
       writer.uint32(40).uint32(message.oemCryptoApiVersion);
     }
-    if (message.antiRollbackUsageTable === true) {
-      writer.uint32(48).bool(message.antiRollbackUsageTable);
-    }
+    writer.uint32(48).bool(message.antiRollbackUsageTable);
     if (message.srmVersion !== 0) {
       writer.uint32(56).uint32(message.srmVersion);
     }
-    if (message.canUpdateSrm === true) {
-      writer.uint32(64).bool(message.canUpdateSrm);
-    }
-    writer.uint32(74).fork();
-    for (const v of message.supportedCertificateKeyType) {
-      writer.int32(v);
-    }
-    writer.ldelim();
+    writer.uint32(64).bool(message.canUpdateSrm);
+    writer.uint32(72).uint32(0);
     if (message.analogOutputCapabilities !== 0) {
       writer.uint32(80).int32(message.analogOutputCapabilities);
     }

@@ -7,6 +7,8 @@ import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import Downloader from "./downloader.js";
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 const input = readline.createInterface(process.stdin, process.stdout);
 
 puppeteer.use(StealthPlugin());

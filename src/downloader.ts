@@ -5,6 +5,7 @@ import puppeteer from "puppeteer-extra";
 import { cookies } from "./cookie-parser.js";
 import { extractObject } from "./extractor.js";
 import { from64, Session } from "./license.js";
+import HttpsProxyAgent from "https-proxy-agent";
 
 type WakanimDRMMetadata = {
   file: string;
@@ -112,8 +113,12 @@ export default class Downloader {
 
       writeFileSync("./security/request_blob", licenseRequest);
       writeFileSync("./security/request_blob_hex", licenseRequest.toString("hex"));
+      writeFileSync("./security/request_blob_base64", licenseRequest.toString("base64"));
+
+      //const proxyAgent = new HttpsProxyAgent.HttpsProxyAgent("http://127.0.0.1:8888");
 
       const response = await fetch(metadata.drm.widevine.url, {
+        //agent: proxyAgent,
         method: "POST",
         body: licenseRequest,
         headers: {

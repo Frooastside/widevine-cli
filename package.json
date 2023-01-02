@@ -55,6 +55,7 @@
   "dependencies": {
     "dotenv": "^16.0.3",
     "holz-provider": "^0.3.1",
+    "https-proxy-agent": "^5.0.1",
     "long": "^5.2.1",
     "meriyah": "^4.3.3",
     "node-fetch": "^3.3.0",

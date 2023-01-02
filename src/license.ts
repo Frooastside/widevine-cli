@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import Long from "long";
 import { AES_CMAC } from "./cmac.js";
 import {
@@ -53,7 +53,7 @@ export class Session {
 
   createLicenseRequest(): Buffer {
     const clientIdentification = ClientIdentification.decode(identifierBlob);
-    ClientIdentification;
+    writeFileSync("security/client_id_stuff", ClientIdentification.encode(clientIdentification).finish());
     const pssh = this._parsePSSH(this._pssh);
     if (!pssh) {
       throw new Error("pssh error!");
@@ -69,7 +69,7 @@ export class Session {
           requestId: this._identifier
         }
       },
-      requestTime: new Long(Date.now()),
+      requestTime: Long.fromNumber(Date.now()).divide(1000),
       protocolVersion: ProtocolVersion.VERSION_2_1,
       keyControlNonce: crypto.randomInt(2 ** 31),
       keyControlNonceDeprecated: Buffer.alloc(0),
@@ -77,6 +77,8 @@ export class Session {
     };
 
     console.log("license request", LicenseRequest.toJSON(licenseRequest));
+    writeFileSync("security/raw_license_ss", Buffer.from(LicenseRequest.encode(licenseRequest).finish()));
+    writeFileSync("security/raw_license_se", LicenseRequest.encode(licenseRequest).finish());
     this._rawLicenseRequest = Buffer.from(LicenseRequest.encode(licenseRequest).finish());
 
     const signature = crypto
