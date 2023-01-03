@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync } from "fs";
 import Long from "long";
 import { AES_CMAC } from "./cmac.js";
 import {
@@ -25,19 +25,6 @@ export type Key = {
   key: string;
 };
 
-export class WVDecryptior {
-  private _sessions: {
-    [key: string]: Session[];
-  } = {};
-  constructor(pssh: Buffer) {
-    console.log("pssh", Buffer.from(pssh).toString("hex"));
-  }
-
-  checkPSSH(pssh: Buffer): boolean {
-    return pssh.subarray(12, 28).equals(Buffer.from(WIDEVINE_SYSTEM_ID));
-  }
-}
-
 export class Session {
   private _devicePrivateKey: crypto.KeyObject;
   private _identifier: Buffer;
@@ -52,10 +39,12 @@ export class Session {
 
   createLicenseRequest(): Buffer {
     const clientIdentification = ClientIdentification.decode(identifierBlob);
-    writeFileSync("security/client_id_stuff", ClientIdentification.encode(clientIdentification).finish());
+    if (!this._pssh.subarray(12, 28).equals(Buffer.from(WIDEVINE_SYSTEM_ID))) {
+      throw new Error("the pssh is not an actuall pssh");
+    }
     const pssh = this._parsePSSH(this._pssh);
     if (!pssh) {
-      throw new Error("pssh error!");
+      throw new Error("pssh is invalid");
     }
 
     const licenseRequest: LicenseRequest = {
@@ -99,7 +88,7 @@ export class Session {
 
   parseLicense(rawLicense: Buffer) {
     if (!this._rawLicenseRequest) {
-      throw new Error("Request a license first!");
+      throw new Error("please request a license first");
     }
     const signedLicense = SignedMessage.decode(rawLicense);
     const sessionKey = crypto.privateDecrypt(this._devicePrivateKey, signedLicense.sessionKey);
@@ -122,7 +111,7 @@ export class Session {
     const calculatedSignature = crypto.createHmac("sha256", serverKey).update(signedLicense.msg).digest();
 
     if (!calculatedSignature.equals(signedLicense.signature)) {
-      throw new Error("Signatures do not match!");
+      throw new Error("signatures do not match");
     }
 
     const license = License.decode(signedLicense.msg);
