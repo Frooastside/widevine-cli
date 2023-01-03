@@ -58,6 +58,7 @@
     "long": "^5.2.1",
     "meriyah": "^4.3.3",
     "node-fetch": "^3.3.0",
+    "node-widevine": "^0.1.0",
     "protobufjs": "^7.1.2",
     "puppeteer": "^19.4.1",
     "puppeteer-extra": "^3.3.4",

@@ -1,9 +1,13 @@
+import { readFileSync } from "fs";
 import fetch from "node-fetch";
+import { Session } from "node-widevine";
 import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { cookies } from "./cookie-parser.js";
 import { extractObject } from "./extractor.js";
-import { from64, Session } from "./license.js";
+
+const privateKey = readFileSync("security/device_private_key");
+const identifierBlob = readFileSync("security/device_client_id_blob");
 
 type WakanimDRMMetadata = {
   file: string;
@@ -103,7 +107,10 @@ export default class Downloader {
         throw new Error("Essential fields were missing!");
       }
 
-      const session = new Session(from64("AAAAMnBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAABISEDAbv7geMkJXmSnpWrtC0mE="));
+      const session = new Session(
+        { privateKey, identifierBlob },
+        Buffer.from("AAAAMnBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAABISEDAbv7geMkJXmSnpWrtC0mE=", "base64")
+      );
 
       const licenseRequest = session.createLicenseRequest();
 
