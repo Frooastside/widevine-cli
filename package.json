@@ -72,7 +72,7 @@
     "uuid": "^9.0.0"
   },
   "lint-staged": {
-    "*.{ts}": "eslint --ext ts --cache --fix",
+    "*.ts": "eslint --ext ts --cache --fix",
     "*.{js,ts,css,md,json}": "prettier --write"
   }
 }
