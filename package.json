@@ -33,23 +33,25 @@
     "pretty": "prettier --write .",
     "build": "tsc --incremental",
     "clean": "rimraf dist",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "postinstall": "node -r source-map-support/register install.js"
   },
   "devDependencies": {
-    "@types/node": "^18.11.3",
+    "@types/node": "^18.11.18",
+    "@types/progress": "^2.0.5",
     "@types/uuid": "^9.0.0",
-    "@typescript-eslint/eslint-plugin": "^5.40.1",
-    "@typescript-eslint/parser": "^5.40.1",
-    "eslint": "^8.25.0",
-    "eslint-config-prettier": "^8.5.0",
-    "husky": "^8.0.1",
+    "@typescript-eslint/eslint-plugin": "^5.48.0",
+    "@typescript-eslint/parser": "^5.48.0",
+    "eslint": "^8.31.0",
+    "eslint-config-prettier": "^8.6.0",
+    "husky": "^8.0.3",
     "lint-staged": "^13.0.3",
     "nodemon": "^2.0.20",
     "prettier": "2.8.1",
     "rimraf": "^3.0.2",
     "source-map-support": "^0.5.21",
     "ts-node": "^10.9.1",
-    "ts-proto": "^1.136.1",
+    "ts-proto": "^1.137.0",
     "typescript": "^4.8.4"
   },
   "dependencies": {
@@ -59,6 +61,7 @@
     "meriyah": "^4.3.3",
     "node-fetch": "^3.3.0",
     "node-widevine": "^0.1.0",
+    "progress": "^2.0.3",
     "protobufjs": "^7.1.2",
     "puppeteer": "^19.4.1",
     "puppeteer-extra": "^3.3.4",
@@ -69,7 +72,7 @@
     "uuid": "^9.0.0"
   },
   "lint-staged": {
-    "*.{js,ts}": "eslint --ext ts --cache --fix",
+    "*.{ts}": "eslint --ext ts --cache --fix",
     "*.{js,ts,css,md,json}": "prettier --write"
   }
 }
