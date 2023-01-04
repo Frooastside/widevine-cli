@@ -1,31 +1,37 @@
 import { exec as callbackExec } from "child_process";
-import { createWriteStream } from "fs";
+import { createWriteStream, existsSync } from "fs";
+import { chmod, mkdir } from "fs/promises";
 import http from "http";
 import https from "https";
 import os from "os";
+import ProgressBar from "progress";
 import URL from "url";
 import { promisify } from "util";
 
 const exec = promisify(callbackExec);
 
-type Product = "crunchy";
-
 export type Platform = "linux" | "mac" | "mac_arm" | "win32" | "win64";
+type Product = "crunchy";
 
 const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.5";
 
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
   crunchy: {
-    linux: "crunchy-v3.0.0-dev.5_linux",
-    mac: "crunchy-v3.0.0-dev.5_darwin",
-    win32: "crunchy-v3.0.0-dev.5_windows.exe",
-    win64: "crunchy-v3.0.0-dev.5_windows.exe"
+    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_linux`,
+    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_darwin`,
+    win64: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_windows.exe`
   }
 };
 
 let platform: Platform;
 
 export async function installDependencies() {
+  detectPlatform();
+  console.log(`Downloading dependencies for Platform "${platform}"`);
+  await installCrunchy();
+}
+
+function detectPlatform() {
   switch (os.platform()) {
     case "darwin":
       platform = os.arch() === "arm64" ? "mac_arm" : "mac";
@@ -39,11 +45,43 @@ export async function installDependencies() {
     default:
       throw new Error(`Unsupported platform "${os.platform()}, ${os.arch()}"`);
   }
-  await installCrunchy();
 }
 
 async function installCrunchy() {
-  console.log(`${os.platform()} ${os.arch()}`);
+  const url = downloadURLs["crunchy"][platform];
+  if (!url) {
+    throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
+  }
+  if (!canDownload("crunchy")) {
+    throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
+  }
+
+  if (!existsSync("bin")) {
+    await mkdir("bin", { recursive: true });
+  }
+
+  const filePath = `./bin/crunchy-cli${platform === "win32" || platform === "win64" ? ".exe" : ""}`;
+
+  const progressBar = new ProgressBar("Downloading crunchy-cli [:bar] :percent :etas", {
+    total: 1000000000,
+    width: 20,
+    complete: "=",
+    incomplete: " "
+  });
+
+  await _downloadFile(url, filePath, (x, y) => {
+    if (progressBar.total !== y) {
+      progressBar.total = y;
+    }
+    if (!progressBar.complete) {
+      progressBar.tick(x);
+    }
+  });
+
+  if (!existsSync(filePath)) {
+    throw new Error("crunchy-cli could not be downloaded, try again later.");
+  }
+  await chmod(filePath, 0o755);
 }
 
 function canDownload(product: Product): Promise<boolean> {
