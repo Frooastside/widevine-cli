@@ -34,11 +34,14 @@
     "build": "tsc --incremental",
     "clean": "rimraf dist",
     "prepare": "husky install",
-    "postinstall": "node -r source-map-support/register install.js"
+    "postinstall": "node -r source-map-support/register install.js",
+    "postinstall:test": "pnpm build && node -r source-map-support/register install.js"
   },
   "devDependencies": {
+    "@types/lzma-native": "^4.0.1",
     "@types/node": "^18.11.18",
     "@types/progress": "^2.0.5",
+    "@types/tar-stream": "^2.2.2",
     "@types/uuid": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^5.48.0",
     "@typescript-eslint/parser": "^5.48.0",
@@ -56,8 +59,10 @@
   },
   "dependencies": {
     "dotenv": "^16.0.3",
+    "extract-zip": "^2.0.1",
     "holz-provider": "^0.3.1",
     "long": "^5.2.1",
+    "lzma-native": "^8.0.6",
     "meriyah": "^4.3.3",
     "node-fetch": "^3.3.0",
     "node-widevine": "^0.1.0",
@@ -69,6 +74,7 @@
     "puppeteer-extra-plugin-portal": "^3.1.0",
     "puppeteer-extra-plugin-recaptcha": "^3.6.6",
     "puppeteer-extra-plugin-stealth": "^2.11.1",
+    "tar-stream": "^3.0.0",
     "uuid": "^9.0.0"
   },
   "lint-staged": {

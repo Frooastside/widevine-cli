@@ -1,25 +1,43 @@
 import { exec as callbackExec } from "child_process";
-import { createWriteStream, existsSync } from "fs";
-import { chmod, mkdir } from "fs/promises";
+import { randomUUID } from "crypto";
+import unzip from "extract-zip";
+import { createWriteStream, existsSync, mkdirSync } from "fs";
+import { chmod, mkdir, mkdtemp, rename } from "fs/promises";
 import http from "http";
-import https from "https";
+import https, { RequestOptions } from "https";
+import lzma from "lzma-native";
 import os from "os";
+import path from "path";
 import ProgressBar from "progress";
-import URL from "url";
+import tar from "tar-stream";
+import { URL } from "url";
 import { promisify } from "util";
 
 const exec = promisify(callbackExec);
 
-export type Platform = "linux" | "mac" | "mac_arm" | "win32" | "win64";
-type Product = "crunchy";
+export type Platform = "linux" | "linux_arm" | "mac" | "mac_arm" | "windows" | "windows_arm";
+type Product = "crunchy-cli" | "ffmpeg";
 
-const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.5";
+const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
+
+const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
+const FFMPEG_WINDOWS_RELEASE = "2023-01-01-git-62da0b4a74";
+const FFMPEG_LINUX_BASE_PATH = "https://johnvansickle.com/ffmpeg/builds";
+const FFMPEG_LINUX_RELEASE = "20220910";
 
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
-  crunchy: {
-    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_linux`,
-    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_darwin`,
-    win64: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.5_windows.exe`
+  "crunchy-cli": {
+    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_linux`,
+    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_darwin`,
+    windows: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_windows.exe`
+  },
+  ffmpeg: {
+    linux: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-amd64-static.tar.xz`,
+    linux_arm: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-arm64-static.tar.xz`,
+    mac: "https://evermeet.cx/ffmpeg/ffmpeg-109469-g62da0b4a74.zip",
+    mac_arm: "https://www.osxexperts.net/FFmpeg511ARM.zip",
+    windows: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`,
+    windows_arm: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`
   }
 };
 
@@ -27,7 +45,9 @@ let platform: Platform;
 
 export async function installDependencies() {
   detectPlatform();
+  checkBin();
   console.log(`Downloading dependencies for Platform "${platform}"`);
+  await installFFMPEG();
   await installCrunchy();
 }
 
@@ -37,59 +57,98 @@ function detectPlatform() {
       platform = os.arch() === "arm64" ? "mac_arm" : "mac";
       break;
     case "linux":
-      platform = "linux";
+      platform = os.arch() === "arm64" ? "linux_arm" : "linux";
       break;
     case "win32":
-      platform = os.arch() === "x64" || os.arch() === "arm64" ? "win64" : "win32";
+      platform = os.arch() === "arm64" ? "windows_arm" : "windows";
       return;
     default:
       throw new Error(`Unsupported platform "${os.platform()}, ${os.arch()}"`);
   }
 }
 
+async function installFFMPEG() {
+  const url = downloadURLs["ffmpeg"][platform];
+  if (!url) {
+    return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
+  }
+  const downloadUrl = new URL(url);
+
+  if (!canDownload(downloadUrl)) {
+    return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
+  }
+
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ffmpeg-extracted"));
+
+  await _downloadFile(downloadUrl, tempDir, createProgressBar("ffmpeg"));
+
+  if (!existsSync(tempDir)) {
+    return console.warn("ffmpeg could not be downloaded, try again later");
+  }
+
+  const filePath = `./bin/ffmpeg${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
+
+  switch (platform) {
+    case "windows":
+    case "windows_arm":
+      await rename(`${tempDir}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build/bin/ffmpeg.exe`, filePath);
+      break;
+    case "mac":
+    case "mac_arm":
+      await rename(`${tempDir}/ffmpeg`, "./bin/ffmpeg");
+      break;
+    case "linux":
+    case "linux_arm":
+      await rename(`${tempDir}/ffmpeg-git-${FFMPEG_LINUX_RELEASE}-${platform === "linux" ? "amd64" : "arm64"}-static/ffmpeg`, filePath);
+      break;
+    default:
+      break;
+  }
+
+  await chmod(filePath, 0o755);
+}
+
 async function installCrunchy() {
-  const url = downloadURLs["crunchy"][platform];
+  const url = downloadURLs["crunchy-cli"][platform];
   if (!url) {
     throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
   }
-  if (!canDownload("crunchy")) {
+  const downloadUrl = new URL(url);
+  if (!canDownload(downloadUrl)) {
     throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
   }
 
-  if (!existsSync("bin")) {
-    await mkdir("bin", { recursive: true });
-  }
+  const filePath = `./bin/crunchy-cli${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
 
-  const filePath = `./bin/crunchy-cli${platform === "win32" || platform === "win64" ? ".exe" : ""}`;
-
-  const progressBar = new ProgressBar("Downloading crunchy-cli [:bar] :percent :etas", {
-    total: 1000000000,
-    width: 20,
-    complete: "=",
-    incomplete: " "
-  });
-
-  await _downloadFile(url, filePath, (x, y) => {
-    if (progressBar.total !== y) {
-      progressBar.total = y;
-    }
-    if (!progressBar.complete) {
-      progressBar.tick(x);
-    }
-  });
+  await _downloadFile(downloadUrl, filePath, createProgressBar("crunchy-cli"));
 
   if (!existsSync(filePath)) {
-    throw new Error("crunchy-cli could not be downloaded, try again later.");
+    throw new Error("crunchy-cli could not be downloaded, try again later");
   }
   await chmod(filePath, 0o755);
 }
 
-function canDownload(product: Product): Promise<boolean> {
-  const url = downloadURLs[product][platform];
+async function checkBin() {
+  if (!existsSync("bin")) {
+    await mkdir("bin", { recursive: true });
+  }
+
+  if (!existsSync("bin")) {
+    throw new Error("Error creating / finding bin folder");
+  }
+}
+
+function createProgressBar(product: Product): ProgressBar {
+  return new ProgressBar(`Downloading ${product} :elapseds [:bar] :percent ETA: :etas`, {
+    total: 0,
+    width: 20,
+    complete: "#",
+    incomplete: " "
+  });
+}
+
+function canDownload(url: URL): Promise<boolean> {
   return new Promise((resolve) => {
-    if (!url) {
-      return resolve(false);
-    }
     const request = httpRequest(
       url,
       "HEAD",
@@ -105,102 +164,74 @@ function canDownload(product: Product): Promise<boolean> {
   });
 }
 
-/*async function download(
-  revision: string,
-  progressCallback: (x: number, y: number) => void = (): void => {}
-): Promise<BrowserFetcherRevisionInfo | undefined> {
-  const url = downloadURL(this.#product, this.#platform, this.#downloadHost, revision);
-  const fileName = url.split("/").pop();
-  assert(fileName, `A malformed download URL was found: ${url}.`);
-  const archivePath = path.join(this.#downloadPath, fileName);
-  const outputPath = this.#getFolderPath(revision);
-  if (existsSync(outputPath)) {
-    return this.revisionInfo(revision);
-  }
-  if (!existsSync(this.#downloadPath)) {
-    await mkdir(this.#downloadPath, { recursive: true });
-  }
+function _downloadFile(url: URL, destinationPath: string, progressBar?: ProgressBar): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let downloadedBytes = 0;
+    let totalBytes = 0;
+    let tempDir: string;
 
-  try {
-    await _downloadFile(url, archivePath, progressCallback);
-  } finally {
-    if (existsSync(archivePath)) {
-      await unlink(archivePath);
-    }
-  }
-  const revisionInfo = revisionInfo(revision);
-  if (revisionInfo) {
-    await chmod(revisionInfo.executablePath, 0o755);
-  }
-  return revisionInfo;
-}*/
+    httpRequest(url, "GET", (response) => {
+      if (response.statusCode !== 200) {
+        const error = new Error(`Download failed: server returned code ${response.statusCode}. URL: ${url}`);
+        response.resume();
+        reject(error);
+        return;
+      }
+      const fileName = url.pathname.split("/").pop() ?? url.pathname;
 
-function _downloadFile(url: string, destinationPath: string, progressCallback?: (x: number, y: number) => void): Promise<void> {
-  let fulfill: (value: void | PromiseLike<void>) => void;
-  let reject: (err: Error) => void;
-  const promise = new Promise<void>((x, y) => {
-    fulfill = x;
-    reject = y;
-  });
+      const fileStream = createWriteStream(fileName.endsWith(".zip") ? (tempDir = path.join(os.tmpdir(), randomUUID())) : destinationPath);
+      fileStream.on("finish", async () => {
+        if (fileName.endsWith(".zip")) {
+          if (!existsSync(destinationPath)) {
+            mkdirSync(destinationPath);
+          }
+          await unzip(tempDir, { dir: destinationPath });
+        }
+        return resolve();
+      });
+      fileStream.on("error", reject);
 
-  let downloadedBytes = 0;
-  let totalBytes = 0;
+      if (fileName.endsWith(".tar.xz")) {
+        response.pipe(lzma.createDecompressor()).pipe(tar.extract()).pipe(fileStream);
+      } else if (fileName.endsWith(".tar")) {
+        response.pipe(tar.extract()).pipe(fileStream);
+      } else {
+        response.pipe(fileStream);
+      }
 
-  const request = httpRequest(url, "GET", (response) => {
-    if (response.statusCode !== 200) {
-      const error = new Error(`Download failed: server returned code ${response.statusCode}. URL: ${url}`);
-      // consume response data to free up memory
-      response.resume();
-      reject(error);
-      return;
-    }
-    const file = createWriteStream(destinationPath);
-    file.on("finish", () => {
-      return fulfill();
+      totalBytes = parseInt(response.headers["content-length"]!, 10);
+
+      if (progressBar) {
+        response.on("data", (chunk) => {
+          downloadedBytes += chunk.length;
+          if (progressBar.total !== totalBytes) {
+            progressBar.total = totalBytes;
+          }
+          if (!progressBar.complete) {
+            progressBar.tick(chunk.length);
+          }
+        });
+      }
+    }).on("error", (error) => {
+      throw new Error(error.stack);
     });
-    file.on("error", (error) => {
-      return reject(error);
-    });
-    response.pipe(file);
-    totalBytes = parseInt(response.headers["content-length"]!, 10);
-    if (progressCallback) {
-      response.on("data", onData);
-    }
   });
-  request.on("error", (error) => {
-    return reject(error);
-  });
-  return promise;
-
-  function onData(chunk: string): void {
-    downloadedBytes += chunk.length;
-    progressCallback!(downloadedBytes, totalBytes);
-  }
 }
 
-function httpRequest(url: string, method: string, response: (x: http.IncomingMessage) => void, keepAlive = true): http.ClientRequest {
-  const urlParsed = URL.parse(url);
-
-  type Options = Partial<URL.UrlWithStringQuery> & {
-    method?: string;
-    rejectUnauthorized?: boolean;
-    headers?: http.OutgoingHttpHeaders | undefined;
-  };
-
-  const options: Options = {
-    ...urlParsed,
+function httpRequest(url: URL, method: string, response: (x: http.IncomingMessage) => void, keepAlive = true): http.ClientRequest {
+  const options: RequestOptions = {
     method,
     headers: keepAlive ? { Connection: "keep-alive" } : undefined
   };
 
   const requestCallback = (res: http.IncomingMessage): void => {
     if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-      httpRequest(res.headers.location, method, response);
+      httpRequest(new URL(res.headers.location), method, response);
     } else {
       response(res);
     }
   };
-  const request = options.protocol === "https:" ? https.request(options, requestCallback) : http.request(options, requestCallback);
+  const request = url.protocol === "https:" ? https.request(url, options, requestCallback) : http.request(url, options, requestCallback);
   request.end();
   return request;
 }
