@@ -12,12 +12,14 @@ import tar from "tar-stream";
 import { URL } from "url";
 
 export type Platform = "linux" | "linux_arm" | "mac" | "mac_arm" | "windows" | "windows_arm";
-type Product = "ffmpeg" | "yt-dlp" | "shaka-packager" | "crunchy-cli";
+type Product = "ffmpeg" | "ffmpeg-latest" | "ffprobe-generic" | "yt-dlp" | "shaka-packager" | "crunchy-cli";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-01-01-git-62da0b4a74";
 const FFMPEG_LINUX_BASE_PATH = "https://johnvansickle.com/ffmpeg/builds";
 const FFMPEG_LINUX_RELEASE = "20220910";
+
+const FFMPEG_GENERIC_BASE_PATH = "https://github.com/shaka-project/static-ffmpeg-binaries/releases/download/n4.4-2";
 
 const YTDLP_BASE_PATH = "https://github.com/yt-dlp/yt-dlp/releases/download/2023.01.02";
 
@@ -26,13 +28,25 @@ const SHAKA_PACKAGER_BASE_PATH = "https://github.com/shaka-project/shaka-package
 const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
 
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
-  ffmpeg: {
+  "ffmpeg-latest": {
     linux: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-amd64-static.tar.xz`,
     linux_arm: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-arm64-static.tar.xz`,
     mac: "https://evermeet.cx/ffmpeg/ffmpeg-109469-g62da0b4a74.zip",
     mac_arm: "https://www.osxexperts.net/FFmpeg511ARM.zip",
     windows: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`,
     windows_arm: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`
+  },
+  ffmpeg: {
+    linux: `${FFMPEG_GENERIC_BASE_PATH}/ffmpeg-linux-x64`,
+    linux_arm: `${FFMPEG_GENERIC_BASE_PATH}/ffmpeg-linux-arm64`,
+    mac: `${FFMPEG_GENERIC_BASE_PATH}/ffmpeg-osx-x64`,
+    windows: `${FFMPEG_GENERIC_BASE_PATH}/ffmpeg-win-x64.exe`
+  },
+  "ffprobe-generic": {
+    linux: `${FFMPEG_GENERIC_BASE_PATH}/ffprobe-linux-x64`,
+    linux_arm: `${FFMPEG_GENERIC_BASE_PATH}/ffprobe-linux-arm64`,
+    mac: `${FFMPEG_GENERIC_BASE_PATH}/ffprobe-osx-x64`,
+    windows: `${FFMPEG_GENERIC_BASE_PATH}/ffprobe-win-x64.exe`
   },
   "yt-dlp": {
     linux: `${YTDLP_BASE_PATH}/yt-dlp_linux`,
@@ -59,7 +73,12 @@ export async function installDependencies() {
   detectPlatform();
   checkBin();
   console.log(`Downloading dependencies for Platform "${platform}"`);
-  await installFFMPEG();
+  try {
+    await installFFMPEG();
+  } catch (error) {
+    await installGeneric("ffmpeg", true);
+  }
+  await installGeneric("ffprobe-generic", false);
   await installGeneric("yt-dlp", true);
   await installGeneric("shaka-packager", false);
   await installGeneric("crunchy-cli", false);
@@ -86,7 +105,7 @@ async function installFFMPEG() {
   if (existsSync(filePath)) {
     return console.log("skipping ffmpeg, already exists");
   }
-  const url = downloadURLs["ffmpeg"][platform];
+  const url = downloadURLs["ffmpeg-latest"][platform];
   if (!url) {
     return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
   }
@@ -98,7 +117,7 @@ async function installFFMPEG() {
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ffmpeg-extracted"));
 
-  await _downloadFile(downloadUrl, tempDir, createProgressBar("ffmpeg"));
+  await _downloadFile(downloadUrl, tempDir, createProgressBar("ffmpeg-latest"));
 
   if (!existsSync(tempDir)) {
     return console.warn("ffmpeg could not be downloaded, try again later");
