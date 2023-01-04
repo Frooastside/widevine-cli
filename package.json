@@ -24,18 +24,15 @@
   "bin": {},
   "type": "module",
   "scripts": {
-    "proto:compile": "protoc --plugin=protoc-gen-ts_proto=.\\node_modules\\.bin\\protoc-gen-ts_proto.cmd --ts_proto_opt=\"esModuleInterop=true\" --ts_proto_opt=\"forceLong=long\" --ts_proto_opt=\"env=node\" --ts_proto_out=. src/*.proto",
-    "test": "nodemon -e ts -L -w src --exec \"pnpm build && node -r source-map-support/register dist/tests.js\"",
     "start": "node -r source-map-support/register dist/index.js",
-    "watch": "nodemon -e ts -L -w src --exec \"pnpm build && pnpm start\"",
+    "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "lint": "eslint --ext ts .",
     "lint:fix": "eslint --fix --ext ts .",
     "pretty": "prettier --write .",
     "build": "tsc --incremental",
-    "clean": "rimraf dist",
+    "clean": "rimraf dist && rimraf bin && npm run postinstall",
     "prepare": "husky install",
-    "postinstall": "node -r source-map-support/register install.js",
-    "postinstall:test": "pnpm build && node -r source-map-support/register install.js"
+    "postinstall": "npm run build && node -r source-map-support/register install.js"
   },
   "devDependencies": {
     "@types/lzma-native": "^4.0.1",

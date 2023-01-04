@@ -68,6 +68,10 @@ function detectPlatform() {
 }
 
 async function installFFMPEG() {
+  const filePath = `./bin/ffmpeg${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
+  if (existsSync(filePath)) {
+    return console.log("skipping ffmpeg, already exists");
+  }
   const url = downloadURLs["ffmpeg"][platform];
   if (!url) {
     return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
@@ -85,8 +89,6 @@ async function installFFMPEG() {
   if (!existsSync(tempDir)) {
     return console.warn("ffmpeg could not be downloaded, try again later");
   }
-
-  const filePath = `./bin/ffmpeg${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
 
   switch (platform) {
     case "windows":
@@ -109,6 +111,11 @@ async function installFFMPEG() {
 }
 
 async function installCrunchy() {
+  const filePath = `./bin/crunchy-cli${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
+
+  if (existsSync(filePath)) {
+    return console.log("skipping crunchy-cli, already exists");
+  }
   const url = downloadURLs["crunchy-cli"][platform];
   if (!url) {
     throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
@@ -117,8 +124,6 @@ async function installCrunchy() {
   if (!canDownload(downloadUrl)) {
     throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
   }
-
-  const filePath = `./bin/crunchy-cli${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
 
   await _downloadFile(downloadUrl, filePath, createProgressBar("crunchy-cli"));
 
@@ -139,7 +144,7 @@ async function checkBin() {
 }
 
 function createProgressBar(product: Product): ProgressBar {
-  return new ProgressBar(`Downloading ${product} :elapseds [:bar] :percent ETA: :etas`, {
+  return new ProgressBar(`Downloading ${product} :elapseds [:bar] :percent :progress/:sizemb ETA: :etas`, {
     total: 0,
     width: 20,
     complete: "#",
@@ -179,27 +184,51 @@ function _downloadFile(url: URL, destinationPath: string, progressBar?: Progress
       }
       const fileName = url.pathname.split("/").pop() ?? url.pathname;
 
-      const fileStream = createWriteStream(fileName.endsWith(".zip") ? (tempDir = path.join(os.tmpdir(), randomUUID())) : destinationPath);
-      fileStream.on("finish", async () => {
-        if (fileName.endsWith(".zip")) {
-          if (!existsSync(destinationPath)) {
-            mkdirSync(destinationPath);
-          }
-          await unzip(tempDir, { dir: destinationPath });
-        }
-        return resolve();
-      });
-      fileStream.on("error", reject);
-
       if (fileName.endsWith(".tar.xz")) {
-        response.pipe(lzma.createDecompressor()).pipe(tar.extract()).pipe(fileStream);
+        const lzmaStream = response.pipe(lzma.createDecompressor());
+        const tarStream = tar.extract();
+        tarStream.on("entry", (headers, stream, next) => {
+          switch (headers.type) {
+            case "file":
+              const entryHandle = createWriteStream(`${destinationPath}/${headers.name}`);
+              entryHandle.on("error", stream.destroy);
+              stream.on("end", () => {
+                entryHandle.end();
+                return next();
+              });
+              stream.pipe(entryHandle);
+              break;
+            case "directory":
+              mkdirSync(`${destinationPath}/${headers.name}`);
+              return next();
+              break;
+            default:
+              console.warn(`skipping entry "${headers.name}" with type "${headers.type}"`);
+              stream.resume();
+              return next();
+          }
+        });
+        tarStream.on("finish", resolve);
+        tarStream.on("error", reject);
+        lzmaStream.pipe(tarStream);
       } else if (fileName.endsWith(".tar")) {
-        response.pipe(tar.extract()).pipe(fileStream);
+        response.pipe(tar.extract()).pipe(createWriteStream(destinationPath));
       } else {
+        const fileStream = createWriteStream(fileName.endsWith(".zip") ? (tempDir = path.join(os.tmpdir(), randomUUID())) : destinationPath);
+        fileStream.on("finish", async () => {
+          if (fileName.endsWith(".zip")) {
+            if (!existsSync(destinationPath)) {
+              mkdirSync(destinationPath);
+            }
+            await unzip(tempDir, { dir: destinationPath });
+          }
+          return resolve();
+        });
+        fileStream.on("error", reject);
         response.pipe(fileStream);
       }
 
-      totalBytes = parseInt(response.headers["content-length"]!, 10);
+      totalBytes = parseInt(response.headers["content-length"] ?? "-1", 10);
 
       if (progressBar) {
         response.on("data", (chunk) => {
@@ -208,7 +237,10 @@ function _downloadFile(url: URL, destinationPath: string, progressBar?: Progress
             progressBar.total = totalBytes;
           }
           if (!progressBar.complete) {
-            progressBar.tick(chunk.length);
+            progressBar.tick(chunk.length, {
+              progress: Number(downloadedBytes / 1000000).toFixed(2),
+              size: Number(totalBytes / 1000000).toFixed(2)
+            });
           }
         });
       }
