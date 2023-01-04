@@ -1,4 +1,3 @@
-import { exec as callbackExec } from "child_process";
 import { randomUUID } from "crypto";
 import unzip from "extract-zip";
 import { createWriteStream, existsSync, mkdirSync } from "fs";
@@ -11,26 +10,22 @@ import path from "path";
 import ProgressBar from "progress";
 import tar from "tar-stream";
 import { URL } from "url";
-import { promisify } from "util";
-
-const exec = promisify(callbackExec);
 
 export type Platform = "linux" | "linux_arm" | "mac" | "mac_arm" | "windows" | "windows_arm";
-type Product = "crunchy-cli" | "ffmpeg";
-
-const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
+type Product = "ffmpeg" | "yt-dlp" | "shaka-packager" | "crunchy-cli";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-01-01-git-62da0b4a74";
 const FFMPEG_LINUX_BASE_PATH = "https://johnvansickle.com/ffmpeg/builds";
 const FFMPEG_LINUX_RELEASE = "20220910";
 
+const YTDLP_BASE_PATH = "https://github.com/yt-dlp/yt-dlp/releases/download/2023.01.02";
+
+const SHAKA_PACKAGER_BASE_PATH = "https://github.com/shaka-project/shaka-packager/releases/download/v2.6.1";
+
+const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
+
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
-  "crunchy-cli": {
-    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_linux`,
-    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_darwin`,
-    windows: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_windows.exe`
-  },
   ffmpeg: {
     linux: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-amd64-static.tar.xz`,
     linux_arm: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-arm64-static.tar.xz`,
@@ -38,6 +33,23 @@ const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
     mac_arm: "https://www.osxexperts.net/FFmpeg511ARM.zip",
     windows: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`,
     windows_arm: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`
+  },
+  "yt-dlp": {
+    linux: `${YTDLP_BASE_PATH}/yt-dlp_linux`,
+    linux_arm: `${YTDLP_BASE_PATH}/yt-dlp_linux_aarch64`,
+    mac: `${YTDLP_BASE_PATH}/yt-dlp_macos`,
+    windows: `${YTDLP_BASE_PATH}/yt-dlp.exe`
+  },
+  "shaka-packager": {
+    linux: `${SHAKA_PACKAGER_BASE_PATH}/packager-linux-x64`,
+    linux_arm: `${SHAKA_PACKAGER_BASE_PATH}/packager-linux-arm64`,
+    mac: `${SHAKA_PACKAGER_BASE_PATH}/packager-osx-x64`,
+    windows: `${SHAKA_PACKAGER_BASE_PATH}/packager-win-x64.exe`
+  },
+  "crunchy-cli": {
+    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_linux`,
+    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_darwin`,
+    windows: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_windows.exe`
   }
 };
 
@@ -48,7 +60,9 @@ export async function installDependencies() {
   checkBin();
   console.log(`Downloading dependencies for Platform "${platform}"`);
   await installFFMPEG();
-  await installCrunchy();
+  await installGeneric("yt-dlp", true);
+  await installGeneric("shaka-packager", false);
+  await installGeneric("crunchy-cli", false);
 }
 
 function detectPlatform() {
@@ -110,25 +124,37 @@ async function installFFMPEG() {
   await chmod(filePath, 0o755);
 }
 
-async function installCrunchy() {
-  const filePath = `./bin/crunchy-cli${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
+async function installGeneric(product: Product, required: boolean) {
+  const filePath = `./bin/${product}${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
 
   if (existsSync(filePath)) {
-    return console.log("skipping crunchy-cli, already exists");
+    return console.log(`skipping ${product}, already exists`);
   }
-  const url = downloadURLs["crunchy-cli"][platform];
+  const url = downloadURLs[product][platform];
   if (!url) {
-    throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
+    if (required) {
+      throw new Error(`${product} is required but not compatible with you platform or architecture`);
+    } else {
+      return console.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
+    }
   }
   const downloadUrl = new URL(url);
   if (!canDownload(downloadUrl)) {
-    throw new Error("crunchy-cli is required but not compatible with you platform or architecture");
+    if (required) {
+      throw new Error(`${product} is required but not compatible with you platform or architecture`);
+    } else {
+      return console.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
+    }
   }
 
-  await _downloadFile(downloadUrl, filePath, createProgressBar("crunchy-cli"));
+  await _downloadFile(downloadUrl, filePath, createProgressBar(product));
 
   if (!existsSync(filePath)) {
-    throw new Error("crunchy-cli could not be downloaded, try again later");
+    if (required) {
+      throw new Error(`${product} is required but could not be downloaded, try again later`);
+    } else {
+      return console.warn(`${product} could not be downloaded. skipping it for now, try again later`);
+    }
   }
   await chmod(filePath, 0o755);
 }
