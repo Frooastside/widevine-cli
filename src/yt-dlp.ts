@@ -3,6 +3,8 @@ import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
 export interface DownloadMetadata {
+  _type: string;
+  _version: Version;
   id: string;
   title: string;
   timestamp: number;
@@ -14,39 +16,67 @@ export interface DownloadMetadata {
   webpage_url_domain: string;
   extractor: string;
   extractor_key: string;
-  playlist: any;
-  playlist_index: any;
+  playlist: unknown | null;
+  playlist_index: number | null;
   display_id: string;
   fulltitle: string;
   upload_date: string;
-  requested_subtitles: any;
+  requested_subtitles: unknown[] | null;
   _has_drm: boolean;
   requested_downloads: RequestedDownload[];
-  requested_formats: RequestedFormat2[];
+  requested_formats: Format[];
   format: string;
   format_id: string;
   ext: string;
   protocol: string;
-  language: any;
+  language: string | null;
   format_note: string;
-  filesize_approx: any;
+  filesize_approx: number | null;
   tbr: number;
   width: number;
   height: number;
   resolution: string;
-  fps: any;
+  fps: number | null;
   dynamic_range: string;
   vcodec: string;
   vbr: number;
-  stretched_ratio: any;
+  stretched_ratio: unknown | null;
   aspect_ratio: number;
   acodec: string;
   abr: number;
   asr: number;
-  audio_channels: any;
+  audio_channels: number | null;
   epoch: number;
-  _type: string;
-  _version: Version;
+}
+
+export interface Version {
+  version: string;
+  current_git_head: string | null;
+  release_git_head: string;
+  repository: string;
+}
+
+export interface RequestedDownload {
+  requested_formats: Format[];
+  format: string;
+  format_id: string;
+  ext: string;
+  protocol: string;
+  format_note: string;
+  tbr: number;
+  width: number;
+  height: number;
+  resolution: string;
+  dynamic_range: string;
+  vcodec: string;
+  vbr: number;
+  aspect_ratio: number;
+  acodec: string;
+  abr: number;
+  asr: number;
+  epoch: number;
+  _filename: string;
+  __write_download_archive: boolean;
 }
 
 export interface Format {
@@ -57,10 +87,10 @@ export interface Format {
   height?: number;
   tbr: number;
   asr?: number;
-  fps: any;
-  language: any;
+  fps: number | null;
+  language: string | null;
   format_note: string;
-  filesize: any;
+  filesize: number | null;
   container: string;
   vcodec: string;
   acodec: string;
@@ -86,107 +116,13 @@ export interface Fragment {
   duration?: number;
 }
 
-export interface HttpHeaders {
+export type HttpHeaders = {
   "User-Agent": string;
   Accept: string;
   "Accept-Language": string;
   "Sec-Fetch-Mode": string;
   Cookie: string;
-}
-
-export interface RequestedDownload {
-  requested_formats: RequestedFormat[];
-  format: string;
-  format_id: string;
-  ext: string;
-  protocol: string;
-  format_note: string;
-  tbr: number;
-  width: number;
-  height: number;
-  resolution: string;
-  dynamic_range: string;
-  vcodec: string;
-  vbr: number;
-  aspect_ratio: number;
-  acodec: string;
-  abr: number;
-  asr: number;
-  epoch: number;
-  _filename: string;
-  __write_download_archive: boolean;
-}
-
-export interface RequestedFormat {
-  format_id: string;
-  manifest_url: string;
-  ext: string;
-  width?: number;
-  height?: number;
-  tbr: number;
-  asr?: number;
-  fps: any;
-  language: any;
-  format_note: string;
-  filesize: any;
-  container: string;
-  vcodec: string;
-  acodec: string;
-  dynamic_range?: string;
-  has_drm: boolean;
-  url: string;
-  fragment_base_url: string;
-  fragments: Fragment[];
-  protocol: string;
-  manifest_stream_number: number;
-  video_ext: string;
-  audio_ext: string;
-  vbr?: number;
-  format: string;
-  resolution: string;
-  aspect_ratio?: number;
-  http_headers: HttpHeaders;
-  abr?: number;
-}
-
-export interface RequestedFormat2 {
-  format_id: string;
-  manifest_url: string;
-  ext: string;
-  width?: number;
-  height?: number;
-  tbr: number;
-  asr?: number;
-  fps: any;
-  language: any;
-  format_note: string;
-  filesize: any;
-  container: string;
-  vcodec: string;
-  acodec: string;
-  dynamic_range?: string;
-  has_drm: boolean;
-  url: string;
-  fragment_base_url: string;
-  fragments: Fragment[];
-  protocol: string;
-  manifest_stream_number: number;
-  video_ext: string;
-  audio_ext: string;
-  vbr?: number;
-  format: string;
-  resolution: string;
-  aspect_ratio?: number;
-  http_headers: HttpHeaders;
-  abr?: number;
-}
-
-export interface Version {
-  version: string;
-  current_git_head: any;
-  release_git_head: string;
-  repository: string;
-}
+} & Record<string, string>;
 
 export async function fetchMetadata(url: string): Promise<DownloadMetadata> {
   const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", url];
