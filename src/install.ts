@@ -10,27 +10,20 @@ import path from "path";
 import ProgressBar from "progress";
 import tar from "tar-stream";
 import { URL } from "url";
-
-export type Platform = "linux" | "linux_arm" | "mac" | "mac_arm" | "windows" | "windows_arm";
-type Product = "ffmpeg" | "ffmpeg-latest" | "ffprobe-generic" | "yt-dlp" | "shaka-packager" | "crunchy-cli";
+import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
-const FFMPEG_WINDOWS_RELEASE = "2023-01-01-git-62da0b4a74";
-const FFMPEG_LINUX_BASE_PATH = "https://johnvansickle.com/ffmpeg/builds";
-const FFMPEG_LINUX_RELEASE = "20220910";
-
+const FFMPEG_WINDOWS_RELEASE = "2023-01-04-git-4a80db5fc2";
+const FFMPEG_LINUX_BASE_PATH = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest";
 const FFMPEG_GENERIC_BASE_PATH = "https://github.com/shaka-project/static-ffmpeg-binaries/releases/download/n4.4-2";
-
 const YTDLP_BASE_PATH = "https://github.com/yt-dlp/yt-dlp/releases/download/2023.01.02";
-
 const SHAKA_PACKAGER_BASE_PATH = "https://github.com/shaka-project/shaka-packager/releases/download/v2.6.1";
-
 const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
 
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
   "ffmpeg-latest": {
-    linux: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-amd64-static.tar.xz`,
-    linux_arm: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-git-arm64-static.tar.xz`,
+    linux: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-master-latest-linux64-gpl.tar.xz`,
+    linux_arm: `${FFMPEG_LINUX_BASE_PATH}/ffmpeg-master-latest-linuxarm64-gpl.tar.xz`,
     mac: "https://evermeet.cx/ffmpeg/ffmpeg-109469-g62da0b4a74.zip",
     mac_arm: "https://www.osxexperts.net/FFmpeg511ARM.zip",
     windows: `${FFMPEG_WINDOWS_BASE_PATH}/${FFMPEG_WINDOWS_RELEASE}/ffmpeg-${FFMPEG_WINDOWS_RELEASE}-full_build.zip`,
@@ -70,7 +63,7 @@ const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
 let platform: Platform;
 
 export async function installDependencies() {
-  detectPlatform();
+  platform = detectPlatform();
   checkBin();
   console.log(`Downloading dependencies for Platform "${platform}"`);
   try {
@@ -82,22 +75,6 @@ export async function installDependencies() {
   await installGeneric("yt-dlp", true);
   await installGeneric("shaka-packager", false);
   await installGeneric("crunchy-cli", false);
-}
-
-function detectPlatform() {
-  switch (os.platform()) {
-    case "darwin":
-      platform = os.arch() === "arm64" ? "mac_arm" : "mac";
-      break;
-    case "linux":
-      platform = os.arch() === "arm64" ? "linux_arm" : "linux";
-      break;
-    case "win32":
-      platform = os.arch() === "arm64" ? "windows_arm" : "windows";
-      return;
-    default:
-      throw new Error(`Unsupported platform "${os.platform()}, ${os.arch()}"`);
-  }
 }
 
 async function installFFMPEG() {
@@ -134,7 +111,7 @@ async function installFFMPEG() {
       break;
     case "linux":
     case "linux_arm":
-      await rename(`${tempDir}/ffmpeg-git-${FFMPEG_LINUX_RELEASE}-${platform === "linux" ? "amd64" : "arm64"}-static/ffmpeg`, filePath);
+      await rename(`${tempDir}/ffmpeg-master-latest-${platform === "linux" ? "linux64" : "linuxarm64"}-gpl/bin/ffmpeg`, filePath);
       break;
     default:
       break;
