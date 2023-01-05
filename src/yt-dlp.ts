@@ -2,51 +2,126 @@ import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
-export interface DownloadMetadata {
-  _type: string;
+export async function fetchMetadata(url: string): Promise<DownloadMetadata> {
+  const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", url];
+  const stdout = await binaryExecutor.execute(args);
+  return JSON.parse(stdout);
+}
+
+export type DownloadMetadata = PlaylistMetadata | SourceMetadata;
+
+export function isPlaylistMetadata(metadata: DownloadMetadata): metadata is PlaylistMetadata {
+  return !!(metadata as PlaylistMetadata).entries;
+}
+
+export interface Metadata {
   _version: Version;
+  _type: StreamType;
   id: string;
   title: string;
-  timestamp: number;
-  formats: Format[];
-  subtitles: unknown;
+  epoch: number;
+  extractor: string;
+  extractor_key: string;
+
   webpage_url: string;
   original_url: string;
   webpage_url_basename: string;
   webpage_url_domain: string;
-  extractor: string;
-  extractor_key: string;
-  playlist: unknown | null;
-  playlist_index: number | null;
-  display_id: string;
-  fulltitle: string;
-  upload_date: string;
-  requested_subtitles: unknown[] | null;
-  _has_drm: boolean;
-  requested_downloads: RequestedDownload[];
-  requested_formats: Format[];
+  thumbnail?: string;
+  thumbnails?: Thumbnail[];
+
+  availability?: YoutubeAvailability;
+  description?: string;
+  tags?: string[];
+  view_count?: number;
+  playlist_count?: number;
+  uploader?: string;
+  uploader_id?: string;
+  uploader_url?: string;
+  channel?: string;
+  channel_id?: string;
+  channel_url?: string;
+  channel_follower_count?: number | null;
+}
+
+export interface PlaylistMetadata extends Metadata {
+  __files_to_move?: unknown | null;
+  entries: (SourceMetadata | null)[];
+  modified_date?: string | number | null;
+}
+
+export interface SourceMetadata extends Metadata {
+  _format_sort_fields?: string[];
+  _has_drm: boolean | null;
+  __last_playlist_index?: number;
+  timestamp: number | null;
+  duration?: number;
+  duration_string?: string;
+  upload_date?: string;
+  release_timestamp?: number | null;
+  release_date?: string | null;
+  release_year?: number | null;
+
   format: string;
   format_id: string;
-  ext: string;
-  protocol: string;
-  language: string | null;
-  format_note: string;
-  filesize_approx: number | null;
-  tbr: number;
+  format_note: string | null;
+  formats: Format[];
+  subtitles: Record<LanguageCodes, Subtitle>;
+  automatic_captions?: Record<LanguageCodes, Subtitle>;
+  requested_downloads: RequestedDownload[];
+  requested_formats: Format[];
+  requested_subtitles: unknown | null;
+
   width: number;
   height: number;
-  resolution: string;
   fps: number | null;
-  dynamic_range: string;
-  vcodec: string;
-  vbr: number;
+  dynamic_range: DynamicRange;
+  resolution: string;
   stretched_ratio: unknown | null;
   aspect_ratio: number;
-  acodec: string;
-  abr: number;
-  asr: number;
+  vcodec: string | null;
+  acodec: string | null;
   audio_channels: number | null;
-  epoch: number;
+  tbr: number;
+  vbr: number;
+  abr: number | null;
+  asr: number | null;
+  ext: FileEXT;
+  protocol: string;
+
+  playlist: string | null;
+  playlist_index: number | null;
+  playlist_id?: string;
+  playlist_title?: string;
+  playlist_uploader?: string;
+  playlist_uploader_id?: string;
+  playlist_autonumber?: number;
+
+  display_id: string;
+  fulltitle: string;
+  language: LanguageCodes | LanguageNames | null;
+  filesize_approx: number | null;
+  http_headers?: HttpHeaders | null;
+
+  is_live?: boolean;
+  was_live?: boolean;
+  live_status?: LiveStatus;
+
+  album?: string;
+  artist?: string;
+  track?: string;
+  creator?: string;
+  alt_title?: string;
+  location?: string;
+  categories?: YoutubeCategory[];
+
+  like_count?: number;
+  average_rating?: number | null;
+  age_limit?: number;
+  comment_count?: number | null;
+  chapters?: number | null;
+  n_entries?: number;
+  playable_in_embed?: boolean;
 }
 
 export interface Version {
@@ -56,63 +131,133 @@ export interface Version {
   repository: string;
 }
 
+export interface Thumbnail {
+  url: string;
+  preference?: number;
+  id: string;
+  height?: number;
+  width?: number;
+  resolution?: string;
+}
+
+export interface Format {
+  _download_params?: FormatDownloadParams;
+  format_id: string;
+  manifest_url?: string;
+  ext: FileEXT;
+  audio_ext: AudioEXT;
+  video_ext: VideoEXT;
+  width?: number | null;
+  height?: number | null;
+  tbr?: number;
+  asr?: number | null;
+  fps?: number | null;
+  language?: LanguageCodes | LanguageNames | null;
+  format_note?: string;
+  filesize?: number | null;
+  container?: string;
+  vcodec?: string;
+  acodec?: string;
+  dynamic_range?: DynamicRange | null;
+  has_drm?: boolean;
+  url: string;
+  fragment_base_url?: string;
+  fragments?: Fragment[];
+  protocol: string;
+  manifest_stream_number?: number;
+  abr?: number;
+  format: string;
+  resolution: string;
+  aspect_ratio: number | null;
+  http_headers: HttpHeaders;
+  vbr?: number;
+  format_index?: number | null;
+  preference?: number | null;
+  quality?: number | null;
+
+  rows?: number;
+  columns?: number;
+  source_preference?: number;
+  audio_channels?: number | null;
+  language_preference?: number;
+  downloader_options?: DownloaderOptions;
+  filesize_approx?: number;
+}
+
+export interface FormatDownloadParams {
+  stream_type: StreamType;
+  duration: number;
+  timescale: number;
+  width: number;
+  height: number;
+  fourcc: string;
+  language: LanguageCodes;
+  codec_private_data: string;
+  sampling_rate: number | null;
+  channels: number;
+  bits_per_sample: number;
+  nal_unit_length_field: number;
+}
+
+export interface DownloaderOptions {
+  http_chunk_size: number;
+}
+
+export interface Fragment {
+  url?: string;
+  duration?: number;
+  path?: string;
+}
+
 export interface RequestedDownload {
-  requested_formats: Format[];
   format: string;
   format_id: string;
-  ext: string;
+  ext: FileEXT;
   protocol: string;
-  format_note: string;
+  format_note?: string;
   tbr: number;
   width: number;
   height: number;
   resolution: string;
-  dynamic_range: string;
-  vcodec: string;
+  dynamic_range: DynamicRange;
+  vcodec?: string;
   vbr: number;
   aspect_ratio: number;
-  acodec: string;
-  abr: number;
-  asr: number;
+  acodec?: string;
+  abr?: number;
+  asr?: number;
   epoch: number;
   _filename: string;
   __write_download_archive: boolean;
+  requested_formats?: Format[];
+  language?: string;
+  fps?: number;
 }
 
-export interface Format {
-  format_id: string;
-  manifest_url: string;
-  ext: string;
-  width?: number;
-  height?: number;
-  tbr: number;
-  asr?: number;
-  fps: number | null;
-  language: string | null;
-  format_note: string;
-  filesize: number | null;
-  container: string;
-  vcodec: string;
-  acodec: string;
-  dynamic_range?: string;
-  has_drm: boolean;
+export interface Subtitle {
+  ext: SubtitleEXT;
+  manifest_url?: string;
+  filesize?: number | null;
   url: string;
-  fragment_base_url: string;
-  fragments: Fragment[];
+  fragment_base_url?: string;
+  fragments?: SubtitleFragment[];
   protocol: string;
-  manifest_stream_number: number;
-  audio_ext: string;
-  video_ext: string;
-  abr?: number;
-  format: string;
-  resolution: string;
-  aspect_ratio?: number;
-  http_headers: HttpHeaders;
-  vbr?: number;
+  name?: LanguageNames;
+  _download_params?: SubtitleDownloadParameters;
 }
 
-export interface Fragment {
-  url: string;
+export interface SubtitleDownloadParameters {
+  stream_type: string;
+  duration: number;
+  timescale: number;
+  fourcc: string;
+  language: LanguageCodes | LanguageNames;
+  codec_private_data: unknown | null;
+}
+
+export interface SubtitleFragment {
+  url?: string;
+  path?: string;
   duration?: number;
 }
 
@@ -124,8 +269,1169 @@ export type HttpHeaders = {
   Cookie: string;
 } & Record<string, string>;
 
-export async function fetchMetadata(url: string): Promise<DownloadMetadata> {
-  const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", url];
-  const stdout = await binaryExecutor.execute(args);
-  return JSON.parse(stdout);
-}
+export type StreamType = "audio" | "video" | string;
+export type DynamicRange = "SDR" | "HDR" | string;
+
+export type LiveStatus = "live" | "not_live" | string;
+export type YoutubeAvailability = "public" | "needs_auth" | "unlisted" | "private" | string;
+export type YoutubeCategory = "Music" | "People & Blogs" | "Entertainment" | "Gaming" | "Pets & Animals" | string;
+
+export type FileEXT = VideoEXT | AudioEXT | SubtitleEXT | string;
+
+export type VideoEXT =
+  | "none"
+  | "ismv"
+  | "webm"
+  | "mkv"
+  | "flv"
+  | "vob"
+  | "ogv,"
+  | "ogg"
+  | "drc"
+  | "gif"
+  | "gifv"
+  | "mng"
+  | "avi"
+  | "MTS,"
+  | "M2TS,"
+  | "TS"
+  | "mov,"
+  | "qt"
+  | "wmv"
+  | "yuv"
+  | "rm"
+  | "rmvb"
+  | "viv"
+  | "asf"
+  | "amv"
+  | "mp4,"
+  | "m4p"
+  | "m4v"
+  | "mpg,"
+  | "mp2,"
+  | "mpeg,"
+  | "mpe,"
+  | "mpv"
+  | "mpg,"
+  | "mpeg,"
+  | "m2v"
+  | "m4v"
+  | "svi"
+  | "3gp"
+  | "3g2"
+  | "mxf"
+  | "roq"
+  | "nsv"
+  | "flv"
+  | "f4v"
+  | "f4p"
+  | "f4a"
+  | "f4b"
+  | string;
+
+export type AudioEXT =
+  | "none"
+  | "weba"
+  | "isma"
+  | "mhtml"
+  | "3gp"
+  | "aa"
+  | "aac"
+  | "aax"
+  | "act"
+  | "aiff"
+  | "alac"
+  | "amr"
+  | "ape"
+  | "au"
+  | "awb"
+  | "dss"
+  | "dvf"
+  | "flac"
+  | "gsm"
+  | "iklax"
+  | "ivs"
+  | "m4a"
+  | "m4b"
+  | "m4p"
+  | "mmf"
+  | "mp3"
+  | "mpc"
+  | "msv"
+  | "nmf"
+  | "ogg,"
+  | "oga,"
+  | "mogg"
+  | "opus"
+  | "ra,"
+  | "rm"
+  | "raw"
+  | "rf64"
+  | "sln"
+  | "tta"
+  | "voc"
+  | "vox"
+  | "wav"
+  | "wma"
+  | "wv"
+  | "webm"
+  | "8svx"
+  | "cda"
+  | string;
+
+export type SubtitleEXT =
+  | "json"
+  | "vtt"
+  | "srt"
+  | "ssa"
+  | "ass"
+  | "json3"
+  | "sbv"
+  | "txt"
+  | "lrc"
+  | "xml"
+  | "usf"
+  | "dxfp"
+  | "srv1"
+  | "srv2"
+  | "srv3"
+  | "ttml"
+  | string;
+
+export type LanguageCodes = LanguagesBasicISO | LanguagesISO_639_1 | LanguagesISO_639_3 | string;
+
+export type LanguageNames =
+  | "Afrikaans"
+  | "Akan"
+  | "Amharic"
+  | "Arabic"
+  | "Assamese"
+  | "Aymara"
+  | "Azerbaijani"
+  | "Belarusian"
+  | "Bulgarian"
+  | "Bhojpuri"
+  | "Bangla"
+  | "Bosnian"
+  | "Catalan"
+  | "Cebuano"
+  | "Corsican"
+  | "Czech"
+  | "Welsh"
+  | "Danish"
+  | "German"
+  | "German (Original)"
+  | "Divehi"
+  | "Ewe"
+  | "Greek"
+  | "English"
+  | "Esperanto"
+  | "Spanish"
+  | "Estonian"
+  | "Basque"
+  | "Persian"
+  | "Finnish"
+  | "Filipino"
+  | "French"
+  | "Western Frisian"
+  | "Irish"
+  | "Scottish Gaelic"
+  | "Galician"
+  | "Guarani"
+  | "Gujarati"
+  | "Hausa"
+  | "Hawaiian"
+  | "Hindi"
+  | "Hmong"
+  | "Croatian"
+  | "Haitian Creole"
+  | "Hungarian"
+  | "Armenian"
+  | "Indonesian"
+  | "Igbo"
+  | "Icelandic"
+  | "Italian"
+  | "Hebrew"
+  | "Japanese"
+  | "Javanese"
+  | "Georgian"
+  | "Kazakh"
+  | "Khmer"
+  | "Kannada"
+  | "Korean"
+  | "Krio"
+  | "Kurdish"
+  | "Kyrgyz"
+  | "Latin"
+  | "Luxembourgish"
+  | "Ganda"
+  | "Lingala"
+  | "Lao"
+  | "Lithuanian"
+  | "Latvian"
+  | "Malagasy"
+  | "Māori"
+  | "Macedonian"
+  | "Malayalam"
+  | "Mongolian"
+  | "Marathi"
+  | "Malay"
+  | "Maltese"
+  | "Burmese"
+  | "Nepali"
+  | "Dutch"
+  | "Norwegian"
+  | "Northern Sotho"
+  | "Nyanja"
+  | "Oromo"
+  | "Odia"
+  | "Punjabi"
+  | "Polish"
+  | "Pashto"
+  | "Portuguese"
+  | "Quechua"
+  | "Romanian"
+  | "Russian"
+  | "Kinyarwanda"
+  | "Sanskrit"
+  | "Sindhi"
+  | "Sinhala"
+  | "Slovak"
+  | "Slovenian"
+  | "Samoan"
+  | "Shona"
+  | "Somali"
+  | "Albanian"
+  | "Serbian"
+  | "Southern Sotho"
+  | "Sundanese"
+  | "Swedish"
+  | "Swahili"
+  | "Tamil"
+  | "Telugu"
+  | "Tajik"
+  | "Thai"
+  | "Tigrinya"
+  | "Turkmen"
+  | "Turkish"
+  | "Tsonga"
+  | "Tatar"
+  | "Uyghur"
+  | "Ukrainian"
+  | "Unknown Language"
+  | "Urdu"
+  | "Uzbek"
+  | "Vietnamese"
+  | "Xhosa"
+  | "Yiddish"
+  | "Yoruba"
+  | "Chinese (Simplified)"
+  | "Chinese (Traditional)"
+  | "Zulu"
+  | "English (Original)"
+  | "Spanish (Original)"
+  | "French (Original)"
+  | "Indonesian (Original)"
+  | "Japanese (Original)"
+  | "Dutch (Original)"
+  | "Portuguese (Original)"
+  | "Russian (Original)"
+  | "Vietnamese (Original)"
+  | "English (United Kingdom) - English (Animated)"
+  | "English - en"
+  | "Spanish (Latin America)"
+  | "Spanish (Mexico)"
+  | "French (France)"
+  | "Portuguese (Brazil)"
+  | "Portuguese (Portugal)"
+  | "Chinese (Taiwan)";
+
+export type LanguagesBasicISO =
+  | "af"
+  | "af-ZA"
+  | "ar"
+  | "ar-AE"
+  | "ar-BH"
+  | "ar-DZ"
+  | "ar-EG"
+  | "ar-IQ"
+  | "ar-JO"
+  | "ar-KW"
+  | "ar-LB"
+  | "ar-LY"
+  | "ar-MA"
+  | "ar-OM"
+  | "ar-QA"
+  | "ar-SA"
+  | "ar-SY"
+  | "ar-TN"
+  | "ar-YE"
+  | "az"
+  | "az-AZ"
+  | "az-AZ"
+  | "be"
+  | "be-BY"
+  | "bg"
+  | "bg-BG"
+  | "bs-BA"
+  | "ca"
+  | "ca-ES"
+  | "cs"
+  | "cs-CZ"
+  | "cy"
+  | "cy-GB"
+  | "da"
+  | "da-DK"
+  | "de"
+  | "de-AT"
+  | "de-CH"
+  | "de-DE"
+  | "de-LI"
+  | "de-LU"
+  | "dv"
+  | "dv-MV"
+  | "el"
+  | "el-GR"
+  | "en"
+  | "en-AU"
+  | "en-BZ"
+  | "en-CA"
+  | "en-CB"
+  | "en-GB"
+  | "en-IE"
+  | "en-JM"
+  | "en-NZ"
+  | "en-PH"
+  | "en-TT"
+  | "en-US"
+  | "en-ZA"
+  | "en-ZW"
+  | "eo"
+  | "es"
+  | "es-AR"
+  | "es-BO"
+  | "es-CL"
+  | "es-CO"
+  | "es-CR"
+  | "es-DO"
+  | "es-EC"
+  | "es-ES"
+  | "es-ES"
+  | "es-GT"
+  | "es-HN"
+  | "es-MX"
+  | "es-NI"
+  | "es-PA"
+  | "es-PE"
+  | "es-PR"
+  | "es-PY"
+  | "es-SV"
+  | "es-UY"
+  | "es-VE"
+  | "et"
+  | "et-EE"
+  | "eu"
+  | "eu-ES"
+  | "fa"
+  | "fa-IR"
+  | "fi"
+  | "fi-FI"
+  | "fo"
+  | "fo-FO"
+  | "fr"
+  | "fr-BE"
+  | "fr-CA"
+  | "fr-CH"
+  | "fr-FR"
+  | "fr-LU"
+  | "fr-MC"
+  | "gl"
+  | "gl-ES"
+  | "gu"
+  | "gu-IN"
+  | "he"
+  | "he-IL"
+  | "hi"
+  | "hi-IN"
+  | "hr"
+  | "hr-BA"
+  | "hr-HR"
+  | "hu"
+  | "hu-HU"
+  | "hy"
+  | "hy-AM"
+  | "id"
+  | "id-ID"
+  | "is"
+  | "is-IS"
+  | "it"
+  | "it-CH"
+  | "it-IT"
+  | "ja"
+  | "ja-JP"
+  | "ka"
+  | "ka-GE"
+  | "kk"
+  | "kk-KZ"
+  | "kn"
+  | "kn-IN"
+  | "ko"
+  | "ko-KR"
+  | "kok"
+  | "kok-IN"
+  | "ky"
+  | "ky-KG"
+  | "lt"
+  | "lt-LT"
+  | "lv"
+  | "lv-LV"
+  | "mi"
+  | "mi-NZ"
+  | "mk"
+  | "mk-MK"
+  | "mn"
+  | "mn-MN"
+  | "mr"
+  | "mr-IN"
+  | "ms"
+  | "ms-BN"
+  | "ms-MY"
+  | "mt"
+  | "mt-MT"
+  | "nb"
+  | "nb-NO"
+  | "nl"
+  | "nl-BE"
+  | "nl-NL"
+  | "nn-NO"
+  | "ns"
+  | "ns-ZA"
+  | "pa"
+  | "pa-IN"
+  | "pl"
+  | "pl-PL"
+  | "ps"
+  | "ps-AR"
+  | "pt"
+  | "pt-BR"
+  | "pt-PT"
+  | "qu"
+  | "qu-BO"
+  | "qu-EC"
+  | "qu-PE"
+  | "ro"
+  | "ro-RO"
+  | "ru"
+  | "ru-RU"
+  | "sa"
+  | "sa-IN"
+  | "se"
+  | "se-FI"
+  | "se-FI"
+  | "se-FI"
+  | "se-NO"
+  | "se-NO"
+  | "se-NO"
+  | "se-SE"
+  | "se-SE"
+  | "se-SE"
+  | "sk"
+  | "sk-SK"
+  | "sl"
+  | "sl-SI"
+  | "sq"
+  | "sq-AL"
+  | "sr-BA"
+  | "sr-BA"
+  | "sr-SP"
+  | "sr-SP"
+  | "sv"
+  | "sv-FI"
+  | "sv-SE"
+  | "sw"
+  | "sw-KE"
+  | "syr"
+  | "syr-SY"
+  | "ta"
+  | "ta-IN"
+  | "te"
+  | "te-IN"
+  | "th"
+  | "th-TH"
+  | "tl"
+  | "tl-PH"
+  | "tn"
+  | "tn-ZA"
+  | "tr"
+  | "tr-TR"
+  | "tt"
+  | "tt-RU"
+  | "ts"
+  | "uk"
+  | "uk-UA"
+  | "ur"
+  | "ur-PK"
+  | "uz"
+  | "uz-UZ"
+  | "uz-UZ"
+  | "vi"
+  | "vi-VN"
+  | "xh"
+  | "xh-ZA"
+  | "zh"
+  | "zh-CN"
+  | "zh-HK"
+  | "zh-MO"
+  | "zh-SG"
+  | "zh-TW"
+  | "zu"
+  | "zu-ZA";
+export type LanguagesISO_639_1 =
+  | "aa"
+  | "ab"
+  | "af"
+  | "ak"
+  | "sq"
+  | "am"
+  | "ar"
+  | "an"
+  | "hy"
+  | "as"
+  | "av"
+  | "ae"
+  | "ay"
+  | "az"
+  | "ba"
+  | "bm"
+  | "eu"
+  | "be"
+  | "bn"
+  | "bh"
+  | "bi"
+  | "bo"
+  | "bs"
+  | "br"
+  | "bg"
+  | "my"
+  | "ca"
+  | "cs"
+  | "ch"
+  | "ce"
+  | "zh"
+  | "cu"
+  | "cv"
+  | "kw"
+  | "co"
+  | "cr"
+  | "cy"
+  | "cs"
+  | "da"
+  | "de"
+  | "dv"
+  | "nl"
+  | "dz"
+  | "el"
+  | "en"
+  | "eo"
+  | "et"
+  | "eu"
+  | "ee"
+  | "fo"
+  | "fa"
+  | "fj"
+  | "fi"
+  | "fr"
+  | "fr"
+  | "fy"
+  | "ff"
+  | "ka"
+  | "de"
+  | "gd"
+  | "ga"
+  | "gl"
+  | "gv"
+  | "el"
+  | "gn"
+  | "gu"
+  | "ht"
+  | "ha"
+  | "he"
+  | "hz"
+  | "hi"
+  | "ho"
+  | "hr"
+  | "hu"
+  | "hy"
+  | "ig"
+  | "is"
+  | "io"
+  | "ii"
+  | "iu"
+  | "ie"
+  | "ia"
+  | "id"
+  | "ik"
+  | "is"
+  | "it"
+  | "jv"
+  | "ja"
+  | "kl"
+  | "kn"
+  | "ks"
+  | "ka"
+  | "kr"
+  | "kk"
+  | "km"
+  | "ki"
+  | "rw"
+  | "ky"
+  | "kv"
+  | "kg"
+  | "ko"
+  | "kj"
+  | "ku"
+  | "lo"
+  | "la"
+  | "lv"
+  | "li"
+  | "ln"
+  | "lt"
+  | "lb"
+  | "lu"
+  | "lg"
+  | "mk"
+  | "mh"
+  | "ml"
+  | "mi"
+  | "mr"
+  | "ms"
+  | "mk"
+  | "mg"
+  | "mt"
+  | "mn"
+  | "mi"
+  | "ms"
+  | "my"
+  | "na"
+  | "nv"
+  | "nr"
+  | "nd"
+  | "ng"
+  | "ne"
+  | "nl"
+  | "nn"
+  | "nb"
+  | "no"
+  | "ny"
+  | "oc"
+  | "oj"
+  | "or"
+  | "om"
+  | "os"
+  | "pa"
+  | "fa"
+  | "pi"
+  | "pl"
+  | "pt"
+  | "ps"
+  | "qu"
+  | "rm"
+  | "ro"
+  | "ro"
+  | "rn"
+  | "ru"
+  | "sg"
+  | "sa"
+  | "si"
+  | "sk"
+  | "sk"
+  | "sl"
+  | "se"
+  | "sm"
+  | "sn"
+  | "sd"
+  | "so"
+  | "st"
+  | "es"
+  | "sq"
+  | "sc"
+  | "sr"
+  | "ss"
+  | "su"
+  | "sw"
+  | "sv"
+  | "ty"
+  | "ta"
+  | "tt"
+  | "te"
+  | "tg"
+  | "tl"
+  | "th"
+  | "bo"
+  | "ti"
+  | "to"
+  | "tn"
+  | "ts"
+  | "tk"
+  | "tr"
+  | "tw"
+  | "ug"
+  | "uk"
+  | "ur"
+  | "uz"
+  | "ve"
+  | "vi"
+  | "vo"
+  | "cy"
+  | "wa"
+  | "wo"
+  | "xh"
+  | "yi"
+  | "yo"
+  | "za"
+  | "zh"
+  | "zu";
+export type LanguagesISO_639_3 =
+  | "und"
+  | "aar"
+  | "abk"
+  | "ace"
+  | "ach"
+  | "ada"
+  | "ady"
+  | "afh"
+  | "afr"
+  | "ain"
+  | "aka"
+  | "akk"
+  | "sqi"
+  | "ale"
+  | "alt"
+  | "amh"
+  | "ang"
+  | "anp"
+  | "ara"
+  | "arc"
+  | "arg"
+  | "hye"
+  | "arn"
+  | "arp"
+  | "arw"
+  | "asm"
+  | "ast"
+  | "ava"
+  | "ave"
+  | "awa"
+  | "aym"
+  | "aze"
+  | "bak"
+  | "bal"
+  | "bam"
+  | "ban"
+  | "eus"
+  | "bas"
+  | "bej"
+  | "bel"
+  | "bem"
+  | "ben"
+  | "bho"
+  | "bik"
+  | "bin"
+  | "bis"
+  | "bla"
+  | "bod"
+  | "bos"
+  | "bra"
+  | "bre"
+  | "bua"
+  | "bug"
+  | "bul"
+  | "mya"
+  | "byn"
+  | "cad"
+  | "car"
+  | "cat"
+  | "ceb"
+  | "ces"
+  | "cha"
+  | "chb"
+  | "che"
+  | "chg"
+  | "zho"
+  | "chk"
+  | "chm"
+  | "chn"
+  | "cho"
+  | "chp"
+  | "chr"
+  | "chu"
+  | "chv"
+  | "chy"
+  | "cnr"
+  | "cop"
+  | "cor"
+  | "cos"
+  | "cre"
+  | "crh"
+  | "csb"
+  | "cym"
+  | "ces"
+  | "dak"
+  | "dan"
+  | "dar"
+  | "del"
+  | "den"
+  | "deu"
+  | "dgr"
+  | "din"
+  | "div"
+  | "doi"
+  | "dsb"
+  | "dua"
+  | "dum"
+  | "nld"
+  | "dyu"
+  | "dzo"
+  | "efi"
+  | "egy"
+  | "eka"
+  | "ell"
+  | "elx"
+  | "eng"
+  | "enm"
+  | "epo"
+  | "est"
+  | "eus"
+  | "ewe"
+  | "ewo"
+  | "fan"
+  | "fao"
+  | "fas"
+  | "fat"
+  | "fij"
+  | "fil"
+  | "fin"
+  | "fon"
+  | "fra"
+  | "fra"
+  | "frm"
+  | "fro"
+  | "frr"
+  | "frs"
+  | "fry"
+  | "ful"
+  | "fur"
+  | "gaa"
+  | "gay"
+  | "gba"
+  | "kat"
+  | "deu"
+  | "gez"
+  | "gil"
+  | "gla"
+  | "gle"
+  | "glg"
+  | "glv"
+  | "gmh"
+  | "goh"
+  | "gon"
+  | "gor"
+  | "got"
+  | "grb"
+  | "grc"
+  | "ell"
+  | "grn"
+  | "gsw"
+  | "guj"
+  | "gwi"
+  | "hai"
+  | "hat"
+  | "hau"
+  | "haw"
+  | "heb"
+  | "her"
+  | "hil"
+  | "hin"
+  | "hit"
+  | "hmn"
+  | "hmo"
+  | "hrv"
+  | "hsb"
+  | "hun"
+  | "hup"
+  | "hye"
+  | "iba"
+  | "ibo"
+  | "isl"
+  | "ido"
+  | "iii"
+  | "iku"
+  | "ile"
+  | "ilo"
+  | "ina"
+  | "ind"
+  | "inh"
+  | "ipk"
+  | "isl"
+  | "ita"
+  | "jav"
+  | "jbo"
+  | "jpn"
+  | "jpr"
+  | "jrb"
+  | "kaa"
+  | "kab"
+  | "kac"
+  | "kal"
+  | "kam"
+  | "kan"
+  | "kas"
+  | "kat"
+  | "kau"
+  | "kaw"
+  | "kaz"
+  | "kbd"
+  | "kha"
+  | "khm"
+  | "kho"
+  | "kik"
+  | "kin"
+  | "kir"
+  | "kmb"
+  | "kok"
+  | "kom"
+  | "kon"
+  | "kor"
+  | "kos"
+  | "kpe"
+  | "krc"
+  | "krl"
+  | "kru"
+  | "kua"
+  | "kum"
+  | "kur"
+  | "kut"
+  | "lad"
+  | "lah"
+  | "lam"
+  | "lao"
+  | "lat"
+  | "lav"
+  | "lez"
+  | "lim"
+  | "lin"
+  | "lit"
+  | "lol"
+  | "loz"
+  | "ltz"
+  | "lua"
+  | "lub"
+  | "lug"
+  | "lui"
+  | "lun"
+  | "luo"
+  | "lus"
+  | "mkd"
+  | "mad"
+  | "mag"
+  | "mah"
+  | "mai"
+  | "mak"
+  | "mal"
+  | "man"
+  | "mri"
+  | "mar"
+  | "mas"
+  | "msa"
+  | "mdf"
+  | "mdr"
+  | "men"
+  | "mga"
+  | "mic"
+  | "min"
+  | "mis"
+  | "mkd"
+  | "mlg"
+  | "mlt"
+  | "mnc"
+  | "mni"
+  | "moh"
+  | "mon"
+  | "mos"
+  | "mri"
+  | "msa"
+  | "mul"
+  | "mus"
+  | "mwl"
+  | "mwr"
+  | "mya"
+  | "myv"
+  | "nap"
+  | "nau"
+  | "nav"
+  | "nbl"
+  | "nde"
+  | "ndo"
+  | "nds"
+  | "nep"
+  | "new"
+  | "nia"
+  | "niu"
+  | "nld"
+  | "nno"
+  | "nob"
+  | "nog"
+  | "non"
+  | "nor"
+  | "nqo"
+  | "nso"
+  | "nwc"
+  | "nya"
+  | "nym"
+  | "nyn"
+  | "nyo"
+  | "nzi"
+  | "oci"
+  | "oji"
+  | "ori"
+  | "orm"
+  | "osa"
+  | "oss"
+  | "ota"
+  | "pag"
+  | "pal"
+  | "pam"
+  | "pan"
+  | "pap"
+  | "pau"
+  | "peo"
+  | "fas"
+  | "phn"
+  | "pli"
+  | "pol"
+  | "pon"
+  | "por"
+  | "pro"
+  | "pus"
+  | "qaa"
+  | "qtz"
+  | "que"
+  | "raj"
+  | "rap"
+  | "rar"
+  | "roh"
+  | "rom"
+  | "ron"
+  | "ron"
+  | "run"
+  | "rup"
+  | "rus"
+  | "sad"
+  | "sag"
+  | "sah"
+  | "sam"
+  | "san"
+  | "sas"
+  | "sat"
+  | "scn"
+  | "sco"
+  | "sel"
+  | "sga"
+  | "shn"
+  | "sid"
+  | "sin"
+  | "slk"
+  | "slk"
+  | "slv"
+  | "sma"
+  | "sme"
+  | "smj"
+  | "smn"
+  | "smo"
+  | "sms"
+  | "sna"
+  | "snd"
+  | "snk"
+  | "sog"
+  | "som"
+  | "sot"
+  | "spa"
+  | "sqi"
+  | "srd"
+  | "srn"
+  | "srp"
+  | "srr"
+  | "ssw"
+  | "suk"
+  | "sun"
+  | "sus"
+  | "sux"
+  | "swa"
+  | "swe"
+  | "syc"
+  | "syr"
+  | "tah"
+  | "tam"
+  | "tat"
+  | "tel"
+  | "tem"
+  | "ter"
+  | "tet"
+  | "tgk"
+  | "tgl"
+  | "tha"
+  | "bod"
+  | "tig"
+  | "tir"
+  | "tiv"
+  | "tkl"
+  | "tlh"
+  | "tli"
+  | "tmh"
+  | "tog"
+  | "ton"
+  | "tpi"
+  | "tsi"
+  | "tsn"
+  | "tso"
+  | "tuk"
+  | "tum"
+  | "tur"
+  | "tvl"
+  | "twi"
+  | "tyv"
+  | "udm"
+  | "uga"
+  | "uig"
+  | "ukr"
+  | "umb"
+  | "und"
+  | "urd"
+  | "uzb"
+  | "vai"
+  | "ven"
+  | "vie"
+  | "vol"
+  | "vot"
+  | "wal"
+  | "war"
+  | "was"
+  | "cym"
+  | "wln"
+  | "wol"
+  | "xal"
+  | "xho"
+  | "yao"
+  | "yap"
+  | "yid"
+  | "yor"
+  | "zap"
+  | "zbl"
+  | "zen"
+  | "zgh"
+  | "zha"
+  | "zho"
+  | "zul"
+  | "zun"
+  | "zxx"
+  | "zza";
