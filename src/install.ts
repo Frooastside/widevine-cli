@@ -10,9 +10,7 @@ import path from "path";
 import ProgressBar from "progress";
 import tar from "tar-stream";
 import { URL } from "url";
-
-export type Platform = "linux" | "linux_arm" | "mac" | "mac_arm" | "windows" | "windows_arm";
-type Product = "ffmpeg" | "ffmpeg-latest" | "ffprobe-generic" | "yt-dlp" | "shaka-packager" | "crunchy-cli";
+import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-01-04-git-4a80db5fc2";
@@ -65,7 +63,7 @@ const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
 let platform: Platform;
 
 export async function installDependencies() {
-  detectPlatform();
+  platform = detectPlatform();
   checkBin();
   console.log(`Downloading dependencies for Platform "${platform}"`);
   try {
@@ -77,22 +75,6 @@ export async function installDependencies() {
   await installGeneric("yt-dlp", true);
   await installGeneric("shaka-packager", false);
   await installGeneric("crunchy-cli", false);
-}
-
-function detectPlatform() {
-  switch (os.platform()) {
-    case "darwin":
-      platform = os.arch() === "arm64" ? "mac_arm" : "mac";
-      break;
-    case "linux":
-      platform = os.arch() === "arm64" ? "linux_arm" : "linux";
-      break;
-    case "win32":
-      platform = os.arch() === "arm64" ? "windows_arm" : "windows";
-      return;
-    default:
-      throw new Error(`Unsupported platform "${os.platform()}, ${os.arch()}"`);
-  }
 }
 
 async function installFFMPEG() {

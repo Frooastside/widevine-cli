@@ -26,6 +26,7 @@
   "scripts": {
     "start": "node -r source-map-support/register dist/index.js",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
+    "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node -r source-map-support/register dist/tests.js\"",
     "lint": "eslint --ext ts .",
     "lint:fix": "eslint --fix --ext ts .",
     "pretty": "prettier --write .",
