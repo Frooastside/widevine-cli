@@ -3,7 +3,7 @@ import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
 export async function fetchMetadata(url: string): Promise<DownloadMetadata> {
-  const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", url];
+  const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", `"${url}"`];
   const stdout = await binaryExecutor.execute(args);
   return JSON.parse(stdout);
 }
