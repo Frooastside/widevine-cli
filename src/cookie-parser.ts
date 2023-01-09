@@ -1,8 +1,6 @@
-import { readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 
-const file = readFileSync("./security/cookies.txt", "utf8");
-
-type Cookie = {
+export type Cookie = {
   name: string;
   value: string;
   domain: string;
@@ -11,10 +9,28 @@ type Cookie = {
   secure: boolean;
 };
 
-export const cookies: Cookie[] = file
-  .split("\n")
-  .map((line) => parseCookie("" + line))
-  .filter((cookie): cookie is Cookie => cookie !== null && cookie !== undefined);
+export const cookieJar: Cookie[] = [];
+
+export function initializeCookieStore() {
+  if (!existsSync("./cookies/")) {
+    return;
+  }
+  const cookieFiles = readdirSync("./cookies/");
+  if (!cookieFiles || cookieFiles.length < 1) {
+    return;
+  }
+  cookieJar.push(
+    ...cookieFiles
+      .map((file) => readFileSync(file, "utf8"))
+      .map((fileContent) =>
+        fileContent
+          .split("\n")
+          .map((line) => parseCookie("" + line))
+          .filter((cookie): cookie is Cookie => cookie !== null && cookie !== undefined && !!cookie.name && !!cookie.value)
+      )
+      .flat()
+  );
+}
 
 function parseCookie(line: string): Cookie | null {
   const matches = line.match(/^([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$/);

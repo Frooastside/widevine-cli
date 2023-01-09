@@ -2,16 +2,20 @@ import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
-export async function fetchMetadata(url: string): Promise<DownloadMetadata> {
+export async function fetchMetadata(url: string): Promise<YTDLPMetadata | null> {
   const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", `"${url}"`];
   const stdout = await binaryExecutor.execute(args);
   return JSON.parse(stdout);
 }
 
-export type DownloadMetadata = PlaylistMetadata | SourceMetadata;
+export type YTDLPMetadata = PlaylistMetadata | SourceMetadata;
 
-export function isPlaylistMetadata(metadata: DownloadMetadata): metadata is PlaylistMetadata {
-  return !!(metadata as PlaylistMetadata).entries;
+export function isPlaylistMetadata(metadata: YTDLPMetadata): metadata is PlaylistMetadata {
+  return (
+    !!metadata &&
+    (metadata._type === "playlist" ||
+      (!!(metadata as PlaylistMetadata).entries && metadata._type !== "video" && metadata._type !== "audio" && metadata._type !== "text"))
+  );
 }
 
 export interface Metadata {
@@ -97,6 +101,17 @@ export interface SourceMetadata extends Metadata {
   playlist_uploader_id?: string;
   playlist_autonumber?: number;
 
+  series?: string;
+  series_id?: string;
+  season?: string;
+  season_id?: string;
+  season_number?: number;
+  episode?: string;
+  episode_number?: number;
+  format_index?: null;
+  url?: string;
+  manifest_url?: string;
+
   display_id: string;
   fulltitle: string;
   language: LanguageCodes | LanguageNames | null;
@@ -119,7 +134,7 @@ export interface SourceMetadata extends Metadata {
   average_rating?: number | null;
   age_limit?: number;
   comment_count?: number | null;
-  chapters?: number | null;
+  chapters?: Chapter[] | number | null;
   n_entries?: number;
   playable_in_embed?: boolean;
 }
@@ -138,6 +153,12 @@ export interface Thumbnail {
   height?: number;
   width?: number;
   resolution?: string;
+}
+
+export interface Chapter {
+  start_time: number;
+  title: string;
+  end_time: number;
 }
 
 export interface Format {
@@ -269,7 +290,7 @@ export type HttpHeaders = {
   Cookie: string;
 } & Record<string, string>;
 
-export type StreamType = "audio" | "video" | string;
+export type StreamType = "playlist" | "audio" | "video" | "text" | string;
 export type DynamicRange = "SDR" | "HDR" | string;
 
 export type LiveStatus = "live" | "not_live" | string;

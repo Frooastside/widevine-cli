@@ -146,3 +146,4 @@ dist
 /security/
 /bin/
 tests.ts
+/cookies/
