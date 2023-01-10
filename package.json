@@ -24,7 +24,7 @@
   "bin": {},
   "type": "module",
   "scripts": {
-    "start": "node -r source-map-support/register dist/index.js -i https://google.de",
+    "start": "node -r source-map-support/register dist/index.js -I",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node -r source-map-support/register dist/tests.js\"",
     "test": "pnpm build && ts-mocha test/**/*.spec.ts",

@@ -8,11 +8,12 @@ import { v4 as uuidv4, validate } from "uuid";
 import { cookieJar } from "../cookie-parser.js";
 import { extractPsshData, LicenseInformation } from "../drm.js";
 import { extractObject } from "../extractor.js";
-import { configuration } from "../index.js";
-import { logger } from "../io.js";
-import { Metadata, Service } from "../service.js";
+import { config } from "../index.js";
+import { Metadata, Extractor } from "../service.js";
+import { logger } from "../app.js";
 
-export default class WakanimService extends Service {
+export default class WakanimService extends Extractor {
+  private _initialized = false;
   private _browser?: Browser;
   private _koa: Koa;
   private _koaServer: Server;
@@ -46,14 +47,16 @@ export default class WakanimService extends Service {
   }
 
   async initialize() {
+    this._initialized = true;
     this._browser = await puppeteer.launch({
-      headless: !configuration.visual,
+      headless: !config().visual,
       channel: "chrome",
       args: [`--window-size=${840},${560}`]
     });
   }
 
-  async free() {
+  async release() {
+    this._initialized = false;
     this._browser?.close();
     this._koaServer.closeAllConnections();
     this._koaServer.close();
@@ -120,7 +123,7 @@ export default class WakanimService extends Service {
       const licenseInformation: LicenseInformation = {
         url: metadata.drm.widevine.url,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+          "user-agent": await this._browser.userAgent(),
           authorization: metadata.drm.widevine.headers[0].value,
           userid: metadata.drm.widevine.headers[1].value,
           d1: metadata.drm.widevine.headers[2].value,
@@ -130,7 +133,7 @@ export default class WakanimService extends Service {
         psshData: psshData
       };
       const episodeId = uuidv4();
-      if (!configuration.simulate && !configuration.onlyDrm) {
+      if (!config().simulate && !config().onlyDrm) {
         this._makeManifestAvailable(episodeId, manifest);
       }
       const downloadMetadata: Metadata = {
@@ -207,6 +210,10 @@ export default class WakanimService extends Service {
   }
   get version(): string {
     return "0.0.1";
+  }
+
+  get ready(): boolean {
+    return this._initialized;
   }
 }
 

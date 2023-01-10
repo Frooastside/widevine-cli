@@ -5,8 +5,8 @@ import { Session } from "node-widevine";
 import { CDM, Key } from "node-widevine/dist/license";
 import { exit } from "process";
 import { Cookie } from "./cookie-parser";
-import { configuration } from "./index.js";
-import { logger } from "./io.js";
+import { config } from "./index.js";
+import { logger } from "./app.js";
 
 export type LicenseInformation = {
   url: string;
@@ -22,11 +22,11 @@ export type LicenseRequest = {
   pssh?: Buffer;
 };
 
-const useLocal =
-  ((existsSync("security/device_private_key") && existsSync("security/device_client_id_blob")) || configuration.forceLocalDrm) &&
-  !configuration.forceRemoteDrm;
+const useLocal: boolean =
+  ((existsSync("security/device_private_key") && existsSync("security/device_client_id_blob")) || !!config().forceLocalDrm) &&
+  !config().forceRemoteDrm;
 
-let localCDM: CDM;
+let localCDM: CDM | undefined;
 
 if (useLocal) {
   try {
@@ -35,19 +35,18 @@ if (useLocal) {
       identifierBlob: readFileSync("security/device_client_id_blob")
     };
   } catch (error) {
-    logger.error(
-      "DRM Solver",
-      configuration.forceLocalDrm
+    throw new Error(
+      config().forceLocalDrm
         ? "Local DRM was forced but the files couldn't be read."
-        : "The necessary files exist but there was a problem reading it.",
-      "security/device_private_key",
-      "security/device_client_id_blob"
+        : "The necessary files exist but there was a problem reading it."
     );
-    exit(1);
   }
 }
 
 export async function solveDRM(licenseInformation: LicenseRequest): Promise<Key[]> {
+  if (localCDM === undefined) {
+    throw new Error("DRM is not initialized");
+  }
   const cookieHeader = licenseInformation.cookies
     ? licenseInformation.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
     : undefined;
@@ -74,6 +73,9 @@ export async function solveDRM(licenseInformation: LicenseRequest): Promise<Key[
 }
 
 async function _solveLocalDRM(url: string, pssh: Buffer, headers?: HeadersInit): Promise<Key[]> {
+  if (!localCDM) {
+    throw new Error("local cdm was disabled but you want to use it anyway");
+  }
   const session = new Session(localCDM, pssh);
   const licenseRequest = session.createLicenseRequest();
   const response = await fetch(url, {

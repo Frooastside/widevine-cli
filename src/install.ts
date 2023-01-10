@@ -13,12 +13,12 @@ import { URL } from "url";
 import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
-const FFMPEG_WINDOWS_RELEASE = "2023-01-04-git-4a80db5fc2";
+const FFMPEG_WINDOWS_RELEASE = "2023-01-09-git-13d04e30d7";
 const FFMPEG_LINUX_BASE_PATH = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest";
 const FFMPEG_GENERIC_BASE_PATH = "https://github.com/shaka-project/static-ffmpeg-binaries/releases/download/n4.4-2";
-const YTDLP_BASE_PATH = "https://github.com/yt-dlp/yt-dlp/releases/download/2023.01.02";
+const YTDLP_BASE_PATH = "https://github.com/yt-dlp/yt-dlp/releases/download/2023.01.06";
 const SHAKA_PACKAGER_BASE_PATH = "https://github.com/shaka-project/shaka-packager/releases/download/v2.6.1";
-const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.6";
+const CRUNCHY_BASE_PATH = "https://github.com/crunchy-labs/crunchy-cli/releases/download/v3.0.0-dev.7";
 
 const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
   "ffmpeg-latest": {
@@ -54,9 +54,9 @@ const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
     windows: `${SHAKA_PACKAGER_BASE_PATH}/packager-win-x64.exe`
   },
   "crunchy-cli": {
-    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_linux`,
-    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_darwin`,
-    windows: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.6_windows.exe`
+    linux: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.7_linux`,
+    mac: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.7_darwin`,
+    windows: `${CRUNCHY_BASE_PATH}/crunchy-v3.0.0-dev.7_windows.exe`
   }
 };
 

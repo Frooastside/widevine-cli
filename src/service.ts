@@ -1,18 +1,19 @@
 import { Protocol } from "puppeteer";
 import { Cookie } from "./cookie-parser";
 import { LicenseInformation } from "./drm";
-import services from "./services";
+import extractors from "./extractors";
 
-export abstract class Service {
+export abstract class Extractor {
   abstract initialize(): Promise<void> | void;
-  abstract free(): Promise<void> | void;
+  abstract release(): Promise<void> | void;
   abstract checkResponsibility(url: string): boolean;
   abstract fetchMetadata(url: string): Promise<Metadata | null>;
   abstract get name(): string;
   abstract get version(): string;
+  get ready(): boolean {
+    return true;
+  }
 }
-
-export class BackupMetadataProvider {}
 
 export interface Metadata {
   type: MetadataType;

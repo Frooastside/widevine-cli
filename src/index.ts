@@ -1,31 +1,6 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import chalk from "chalk";
-import { Holz } from "holz-provider";
-import puppeteer from "puppeteer-extra";
-import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
-import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
-import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import { logger } from "./io.js";
-
-puppeteer.use(StealthPlugin());
-puppeteer.use(AdblockerPlugin());
-puppeteer.use(
-  RecaptchaPlugin({
-    provider: new Holz(requestSolver),
-    visualFeedback: true,
-    throwOnError: false,
-    solveInViewportOnly: false,
-    solveScoreBased: true,
-    solveInactiveChallenges: true
-  })
-);
-
-function requestSolver(cid: string, captcha: CaptchaInfo) {
-  logger.warn(
-    `A Captcha has to be solved. Please use the Holz-Dekstop application to solve the solve the Captcha with the Id '${cid}'. ${captcha.url}`
-  );
-}
+import { release, start } from "./app.js";
 
 const program = new Command()
   .configureOutput({
@@ -43,35 +18,24 @@ const program = new Command()
   .addOption(new Option("   --ignore-errors"))
   .addOption(new Option("   --skip-questions"))
   .addOption(new Option("-D --only-drm"))
-  .addOption(new Option("-D --only-drm"))
   .addOption(new Option("   --force-local-drm").conflicts("forceRemoteDrm"))
   .addOption(new Option("   --force-remote-drm").conflicts("forceLocalDrm"));
 
 program.parse(process.argv);
 
-export const configuration = program.opts();
+const options = program.opts();
 
-console.log(configuration);
+if (!options.interactive && !options.input) {
+  program.error("you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive].");
+}
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+export type Config = typeof options;
+export const config = () => options;
 
-/*export const configuration = {
-  verbose: false,
-  skipQuestions: false,
-  interactive: false,
-  simulate: false,
-  visual: false,
-  forceLocalDRM: false,
-  forceRemoteDRM: false,
-  onlyDRM: false,
-  silent: 0,
-  input: [] as string[]
-};*/
-
-/*if (configuration.interactive) {
-  while ((textInput = ) && textInput !== "q" && textInput !== "exit") {
-    console.log(await downloader.download(textInput));
-  }
-}*/
-
-export {};
+try {
+  await start();
+} catch (error) {
+  program.error((<Error>error).message);
+} finally {
+  release();
+}
