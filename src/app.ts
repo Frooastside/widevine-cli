@@ -8,12 +8,13 @@ import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { URL } from "url";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
+import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
 import DrmSolver from "./drm.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
-import { Extractor } from "./service.js";
+import { Downloader, Extractor } from "./service.js";
 
 export default class App {
   private _config: Config;
@@ -23,6 +24,9 @@ export default class App {
 
   private _extractors: Extractor[];
   private _genericExtractor: Extractor;
+
+  private _downloaders: Downloader[];
+  private _genericDownloader: Downloader;
 
   constructor(config: Config) {
     this._config = config;
@@ -52,6 +56,8 @@ export default class App {
 
     this._extractors = [new WakanimService(config, this._logger)];
     this._genericExtractor = new GenericExtractor();
+    this._downloaders = [];
+    this._genericDownloader = new YT_DLP_Downloader();
   }
 
   async start() {
@@ -80,6 +86,9 @@ export default class App {
             responsibleExtractors = this._genericExtractor;
           }
           if (!responsibleExtractors.ready) {
+            if (!responsibleExtractors.initialize) {
+              throw new Error("has to be ready if there is not initializer");
+            }
             await responsibleExtractors.initialize();
           }
           try {
@@ -106,7 +115,8 @@ export default class App {
   }
 
   release() {
-    this._extractors.forEach((extractor) => extractor.release());
+    this._extractors.forEach((extractor) => extractor.release && extractor.release());
+    this._downloaders.forEach((downloader) => downloader.release && downloader.release());
     this._io.release();
   }
 

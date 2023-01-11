@@ -1,16 +1,34 @@
-import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
+import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
+import { Download, Downloader } from "../service.js";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
-export async function fetchMetadata(url: string): Promise<YTDLPMetadata | null> {
+export default class YT_DLP_Downloader extends Downloader {
+  initialize = undefined;
+  release = undefined;
+  checkResponsibility(): boolean {
+    return true;
+  }
+  async download(url: string): Promise<Download | null> {
+    const args: ExecutionArguments = [`"${url}"`];
+    const child = await binaryExecutor.spawn(args);
+    throw new Error("Method not implemented.");
+  }
+  get name(): string {
+    return "yt-dlp";
+  }
+  get version(): string {
+    return "0.0.1";
+  }
+}
+
+export async function fetchMetadata(url: string): Promise<Metadata | null> {
   const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", `"${url}"`];
   const stdout = await binaryExecutor.execute(args);
   return JSON.parse(stdout);
 }
 
-export type YTDLPMetadata = PlaylistMetadata | SourceMetadata;
-
-export function isPlaylistMetadata(metadata: YTDLPMetadata): metadata is PlaylistMetadata {
+export function isPlaylistMetadata(metadata: Metadata): metadata is PlaylistMetadata {
   return (
     !!metadata &&
     (metadata._type === "playlist" ||
@@ -18,7 +36,9 @@ export function isPlaylistMetadata(metadata: YTDLPMetadata): metadata is Playlis
   );
 }
 
-export interface Metadata {
+export type Metadata = PlaylistMetadata | SourceMetadata;
+
+export interface MetadataBase {
   _version: Version;
   _type: StreamType;
   id: string;
@@ -48,13 +68,13 @@ export interface Metadata {
   channel_follower_count?: number | null;
 }
 
-export interface PlaylistMetadata extends Metadata {
+export interface PlaylistMetadata extends MetadataBase {
   __files_to_move?: unknown | null;
   entries: (SourceMetadata | null)[];
   modified_date?: string | number | null;
 }
 
-export interface SourceMetadata extends Metadata {
+export interface SourceMetadata extends MetadataBase {
   _format_sort_fields?: string[];
   _has_drm: boolean | null;
   __last_playlist_index?: number;

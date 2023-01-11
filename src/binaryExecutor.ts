@@ -1,4 +1,4 @@
-import { exec as execProcess } from "child_process";
+import { ChildProcess, exec as execProcess, spawn } from "child_process";
 import os from "os";
 import { promisify } from "util";
 
@@ -9,7 +9,7 @@ export type Product = "ffmpeg" | "ffmpeg-latest" | "ffprobe-generic" | "yt-dlp" 
 
 const platform = detectPlatform();
 
-export type ExecutionArguments = (string | [string, string, string?])[];
+export type ExecutionArguments = (string | string[])[];
 
 export default class BinaryExecutor {
   private _product: Product;
@@ -25,6 +25,10 @@ export default class BinaryExecutor {
       maxBuffer: 1024 * 1024 * 10
     });
     return stdout;
+  }
+
+  async spawn(args: ExecutionArguments): Promise<ChildProcess> {
+    return spawn(`${this._executionPath}`, args.flat(), {});
   }
 }
 

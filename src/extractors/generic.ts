@@ -1,22 +1,18 @@
 import { Extractor, Metadata } from "../service.js";
 
 export default class GenericExtractor extends Extractor {
-  initialize(): void | Promise<void> {
-    throw new Error("Method not implemented.");
-  }
-  release(): void | Promise<void> {
-    throw new Error("Method not implemented.");
-  }
+  initialize = undefined;
+  release = undefined;
   checkResponsibility(url: string): boolean {
-    throw new Error("Method not implemented.");
+    return true;
   }
   fetchMetadata(url: string): Promise<Metadata | null> {
     throw new Error("Method not implemented.");
   }
   get name(): string {
-    throw new Error("Method not implemented.");
+    return "Generic Extractor";
   }
   get version(): string {
-    throw new Error("Method not implemented.");
+    return "0.0.1";
   }
 }
