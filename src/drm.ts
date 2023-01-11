@@ -162,7 +162,7 @@ export async function extractPsshData(logger: Logger, rawManifest: string): Prom
   try {
     psshs = _extractPsshDictionaryDefaultMPD(<DefaultManifestFile>manifest) ?? psshs;
   } catch (error) {
-    logger.debug("DRM Solver", "default pssh extractor failed", error);
+    logger.debug("DRM Solver", "default pssh extractor failed", error, (<Error>error).stack);
   }
   return psshs;
 }

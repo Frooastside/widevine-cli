@@ -1,3 +1,4 @@
+import enquirer from "enquirer";
 import { Holz } from "holz-provider";
 import { exit } from "process";
 import puppeteer from "puppeteer-extra";
@@ -5,6 +6,8 @@ import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
 import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { URL } from "url";
+import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import DrmSolver from "./drm.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
@@ -45,12 +48,22 @@ export default class App {
       })
     );
 
+    initializeCookieJar();
+
     this._extractors = [new WakanimService(config, this._logger)];
     this._genericExtractor = new GenericExtractor();
   }
 
   async start() {
     if (this._config.interactive) {
+      const response = await enquirer.prompt({
+        type: "input",
+        message: "Download URL: ",
+        name: "Download",
+
+        validate: (value) => this._validateUrl(value)
+      });
+      console.log(response);
     } else {
       const inputs = this._config.input;
       if (!inputs?.length) {
@@ -61,9 +74,6 @@ export default class App {
       for (const input of inputs) {
         try {
           const url = new URL(input);
-          if (!url.origin) {
-            throw new Error("The provided url is not valid!");
-          }
           let responsibleExtractors = this._extractors.find((extractor) => extractor.checkResponsibility(url.href));
           if (!responsibleExtractors) {
             this._logger.information(undefined, "there was no matching provider, using the generic one.");
@@ -76,10 +86,19 @@ export default class App {
             if (!responsibleExtractors.ready) {
               throw new Error("still not ready after initialization");
             }
+            const metadata = await responsibleExtractors.fetchMetadata(url.href);
+            if (!metadata) {
+              this._handleError(undefined, "an error occurred while fetching the metadata");
+              continue;
+            }
+            this._logger.information(responsibleExtractors.name, "extracted metadata");
+            this._logger.jsonDump("INFO", responsibleExtractors.name, metadata);
           } catch (error) {
+            this._logger.debug(responsibleExtractors.name, error, (<Error>error).stack);
             this._handleError(responsibleExtractors.name, error);
           }
         } catch (error) {
+          this._logger.debug(undefined, error, (<Error>error).stack);
           this._handleError(undefined, error);
         }
       }
@@ -91,13 +110,23 @@ export default class App {
     this._io.release();
   }
 
-  private _handleError(component: string | undefined, error: unknown): void {
+  private _handleError(component: string | undefined, error: unknown): never | void {
     if (!this._config.ignoreErrors) {
       this._logger.error(component, error);
       exit(1);
     } else {
       this._logger.warn(component, "Ignoring error because of --ignore-errors", error);
       return;
+    }
+  }
+
+  private _validateUrl(value: string): boolean {
+    try {
+      new URL(value);
+      return true;
+    } catch (error) {
+      this._logger.debug(undefined, error, (<Error>error).stack);
+      return false;
     }
   }
 }

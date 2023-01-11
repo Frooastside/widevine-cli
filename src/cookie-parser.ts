@@ -21,7 +21,7 @@ export function initializeCookieStore() {
   }
   cookieJar.push(
     ...cookieFiles
-      .map((file) => readFileSync(file, "utf8"))
+      .map((fileName) => readFileSync(`./cookies/${fileName}`, "utf8"))
       .map((fileContent) =>
         fileContent
           .split("\n")

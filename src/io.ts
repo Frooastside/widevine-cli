@@ -32,35 +32,42 @@ export class Logger {
     if (this._config.silent) {
       return;
     }
-    process.stderr.write(this._format(component, false, objects.join(", ")));
+    process.stderr.write(this._format(component, "INFO", false, objects.join(", ")));
   }
 
   warn(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this._format(component, false, `${chalk.yellow("WARNING")}, ${objects.join(", ")}`));
+    process.stderr.write(this._format(component, "WARNING", false, `${chalk.yellow("WARNING")}, ${objects.join(", ")}`));
   }
 
   error(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this._format(component, false, chalk.redBright(objects.join(", "))));
+    process.stderr.write(this._format(component, "ERROR", false, chalk.redBright(objects.join(", "))));
   }
 
-  debug(component: string, ...objects: unknown[]) {
+  debug(component?: string, ...objects: unknown[]) {
     if (!this._config.verbose) {
       return;
     }
-    process.stderr.write(this._format(component, false, objects.join(", ")));
+    process.stderr.write(this._format(component, "DEBUG", false, objects.join(", ")));
   }
 
-  jsonDump(level: "debug" | "output", component: string | undefined, object: unknown) {
+  jsonDump(level: "DEBUG" | "INFO", component: string | undefined, object: unknown) {
     if (!this._config.verbose) {
       return;
     }
-    (level === "output" ? process.stdout : process.stderr).write(this._format(component, false, JSON.stringify(object, null, 2)));
+    (level === "INFO" ? process.stdout : process.stderr).write(this._format(component, level, false, JSON.stringify(object, null, 2)));
   }
 
-  private _format(component: string | undefined, input: boolean, text: string): string {
+  private _format(component: string | undefined, level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
     const date = new Date();
     const dateString = chalk.greenBright(`${date.toLocaleTimeString()},${date.getMilliseconds()}`);
     const componentString = chalk.blue(!!component ? component : this._baseComponent);
-    return input ? format("[%s] %s: ", componentString, text) : format("[%s] %s: %s", dateString, componentString, text);
+    const color = this._color(level);
+    return input
+      ? format("[%s] %s (%s): \n", componentString, color(level), text)
+      : format("[%s] %s (%s): %s \n", dateString, componentString, color(level), text);
+  }
+
+  private _color(level: "DEBUG" | "INFO" | "WARNING" | "ERROR"): typeof chalk.red {
+    return level === "INFO" ? chalk.white : level === "ERROR" ? chalk.redBright : level === "WARNING" ? chalk.yellow : chalk.gray;
   }
 }
