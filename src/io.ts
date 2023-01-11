@@ -1,7 +1,7 @@
 import chalk from "chalk";
-import readline, { Interface } from "readline/promises";
+import readline, { Interface } from "node:readline/promises";
 import { format } from "util";
-import { config } from "./index.js";
+import { Config } from "./index.js";
 
 export class Input {
   private _input: Interface;
@@ -20,18 +20,16 @@ export class Input {
 }
 
 export class Logger {
+  private _config: Config;
   private _baseComponent: string;
-  private _silent: boolean;
-  private _verbose: boolean;
 
-  constructor(baseComponent: string, silent: boolean, verbose: boolean) {
+  constructor(config: Config, baseComponent: string) {
+    this._config = config;
     this._baseComponent = baseComponent;
-    this._silent = silent;
-    this._verbose = verbose;
   }
 
   information(component?: string, ...objects: unknown[]) {
-    if (config().silent) {
+    if (this._config.silent) {
       return;
     }
     process.stderr.write(this._format(component, false, objects.join(", ")));
@@ -46,14 +44,14 @@ export class Logger {
   }
 
   debug(component: string, ...objects: unknown[]) {
-    if (!config().verbose) {
+    if (!this._config.verbose) {
       return;
     }
     process.stderr.write(this._format(component, false, objects.join(", ")));
   }
 
   jsonDump(level: "debug" | "output", component: string | undefined, object: unknown) {
-    if (!config().verbose) {
+    if (!this._config.verbose) {
       return;
     }
     (level === "output" ? process.stdout : process.stderr).write(this._format(component, false, JSON.stringify(object, null, 2)));

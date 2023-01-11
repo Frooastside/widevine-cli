@@ -1,7 +1,5 @@
-import { Protocol } from "puppeteer";
 import { Cookie } from "./cookie-parser";
 import { LicenseInformation } from "./drm";
-import extractors from "./extractors";
 
 export abstract class Extractor {
   abstract initialize(): Promise<void> | void;

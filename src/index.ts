@@ -1,6 +1,8 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import chalk from "chalk";
-import { release, start } from "./app.js";
+import App from "./app.js";
+
+export type Config = typeof config;
 
 const program = new Command()
   .configureOutput({
@@ -23,19 +25,18 @@ const program = new Command()
 
 program.parse(process.argv);
 
-const options = program.opts();
+const config = program.opts();
 
-if (!options.interactive && !options.input) {
+if (!config.interactive && !config.input) {
   program.error("you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive].");
 }
 
-export type Config = typeof options;
-export const config = () => options;
+const app = new App(config);
 
 try {
-  await start();
+  await app.start();
 } catch (error) {
   program.error((<Error>error).message);
 } finally {
-  release();
+  app.release();
 }

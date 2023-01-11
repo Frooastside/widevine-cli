@@ -8,11 +8,13 @@ import { v4 as uuidv4, validate } from "uuid";
 import { cookieJar } from "../cookie-parser.js";
 import { extractPsshData, LicenseInformation } from "../drm.js";
 import { extractObject } from "../extractor.js";
-import { config } from "../index.js";
-import { Metadata, Extractor } from "../service.js";
-import { logger } from "../app.js";
+import { Config } from "../index.js";
+import { Logger } from "../io.js";
+import { Extractor, Metadata } from "../service.js";
 
 export default class WakanimService extends Extractor {
+  private _config: Config;
+  private _logger: Logger;
   private _initialized = false;
   private _browser?: Browser;
   private _koa: Koa;
@@ -20,8 +22,10 @@ export default class WakanimService extends Extractor {
   private _koaAddress: string;
   private _manifests: Record<string, string> = {};
 
-  constructor() {
+  constructor(config: Config, logger: Logger) {
     super();
+    this._config = config;
+    this._logger = logger;
     this._koa = new Koa();
     this._koa.use((context) => {
       const paths = context.request.path.split("/");
@@ -49,7 +53,7 @@ export default class WakanimService extends Extractor {
   async initialize() {
     this._initialized = true;
     this._browser = await puppeteer.launch({
-      headless: !config().visual,
+      headless: !this._config.visual,
       channel: "chrome",
       args: [`--window-size=${840},${560}`]
     });
@@ -109,12 +113,12 @@ export default class WakanimService extends Extractor {
       const manifest = await this._fetchWakanimManifest(metadata.file);
 
       let psshData: Record<string, Buffer>;
-      if (!manifest || !(psshData = await extractPsshData(manifest))) {
+      if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
       }
 
-      const rqId: string | undefined = await page.evaluate(() => (window as any).rqId);
-      const rqIdS: string | undefined = await page.evaluate(() => (window as any).rqIdS);
+      const rqId: string | undefined = await page.evaluate(() => (window as { rqId?: string }).rqId);
+      const rqIdS: string | undefined = await page.evaluate(() => (window as { rqIdS?: string }).rqIdS);
 
       if (!rqId || !rqIdS) {
         throw new Error("Essential fields were missing!");
@@ -133,7 +137,7 @@ export default class WakanimService extends Extractor {
         psshData: psshData
       };
       const episodeId = uuidv4();
-      if (!config().simulate && !config().onlyDrm) {
+      if (!this._config.simulate && !this._config.onlyDrm) {
         this._makeManifestAvailable(episodeId, manifest);
       }
       const downloadMetadata: Metadata = {
@@ -149,7 +153,7 @@ export default class WakanimService extends Extractor {
       };
       return downloadMetadata;
     } catch (error) {
-      logger.error(this.name, error);
+      this._logger.error(this.name, error);
       return null;
     } finally {
       pages.forEach((page) => (!page.isClosed() ? page.close() : null));
