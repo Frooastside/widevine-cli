@@ -1,8 +1,7 @@
 import cookie from "cookie";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { Session } from "node-widevine";
-import { CDM, Key } from "node-widevine/dist/license";
+import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
 import { Cookie } from "./cookie-parser";
 import { Config } from "./index.js";
 import { Logger } from "./io";
@@ -58,22 +57,17 @@ export type Representation = {
 } & Record<string, string | object>;
 
 export default class DrmSolver {
-  private _config: Config;
-  private _logger: Logger;
   private _useLocal: boolean;
-  private _local?: CDM;
+  private _localContentDecryptionModule: ContentDecryptionModule | null;
 
-  constructor(config: Config, logger: Logger) {
-    this._config = config;
-    this._logger = logger;
-
+  constructor(config: Config) {
     this._useLocal =
       ((existsSync("security/device_private_key") && existsSync("security/device_client_id_blob")) || !!config.forceLocalDrm) &&
       !config.forceRemoteDrm;
 
     if (this._useLocal) {
       try {
-        this._local = {
+        this._localContentDecryptionModule = {
           privateKey: readFileSync("security/device_private_key"),
           identifierBlob: readFileSync("security/device_client_id_blob")
         };
@@ -84,13 +78,12 @@ export default class DrmSolver {
             : "The necessary files exist but there was a problem reading it."
         );
       }
+    } else {
+      this._localContentDecryptionModule = null;
     }
   }
 
-  async solveDrm(licenseInformation: LicenseRequest): Promise<Key[]> {
-    if (this._local === undefined) {
-      throw new Error("DRM is not initialized");
-    }
+  async solveDrm(licenseInformation: LicenseRequest): Promise<KeyContainer[]> {
     const cookieHeader = licenseInformation.cookies
       ? licenseInformation.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
       : undefined;
@@ -105,22 +98,22 @@ export default class DrmSolver {
       throw new Error("PSSH is missing!");
     }
 
-    if (this._local) {
+    if (this._localContentDecryptionModule) {
       try {
         return await this._solveLocalDrm(licenseInformation.url, licenseInformation.pssh, headers);
       } catch (error) {
-        return await this._solveRemoteDRM(licenseInformation.url, licenseInformation.pssh, headers);
+        return await this._solveRemoteDrm(licenseInformation.url, licenseInformation.pssh, headers);
       }
     } else {
-      return await this._solveRemoteDRM(licenseInformation.url, licenseInformation.pssh, headers);
+      return await this._solveRemoteDrm(licenseInformation.url, licenseInformation.pssh, headers);
     }
   }
 
-  private async _solveLocalDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<Key[]> {
-    if (!this._local) {
+  private async _solveLocalDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
+    if (!this._localContentDecryptionModule) {
       throw new Error("local cdm was disabled but you want to use it anyway");
     }
-    const session = new Session(this._local, pssh);
+    const session = new Session(this._localContentDecryptionModule, pssh);
     const licenseRequest = session.createLicenseRequest();
     const response = await fetch(url, {
       method: "POST",
@@ -133,7 +126,7 @@ export default class DrmSolver {
     return session.parseLicense(Buffer.from(await response.arrayBuffer()));
   }
 
-  private async _solveRemoteDRM(url: string, pssh: Buffer, headers?: HeadersInit): Promise<Key[]> {
+  private async _solveRemoteDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
     const response = await fetch("https://cdrm-project.com/api", {
       method: "POST",
       body: JSON.stringify({

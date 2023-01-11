@@ -25,7 +25,7 @@ export default class App {
     this._config = config;
     this._logger = new Logger(config, "wvcli");
     this._io = new Input();
-    this._drm = new DrmSolver(config, this._logger);
+    this._drm = new DrmSolver(config);
 
     puppeteer.use(StealthPlugin());
     puppeteer.use(AdblockerPlugin());

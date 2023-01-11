@@ -160,7 +160,7 @@ export default class WakanimService extends Extractor {
     }
   }
 
-  private async _analyzeScripts(page: Page): Promise<WakanimDRMMetadata | null> {
+  private async _analyzeScripts(page: Page): Promise<WakanimDrmMetadata | null> {
     const scripts = await Promise.all(
       (
         await page.$$("script")
@@ -173,7 +173,7 @@ export default class WakanimService extends Extractor {
       }
       const unparsed = script.innerHTML.trim();
 
-      const foundMetadata = extractObject<WakanimDRMMetadata>(unparsed, _isWakanimDRMMetadata);
+      const foundMetadata = extractObject<WakanimDrmMetadata>(unparsed, _isWakanimDrmMetadata);
 
       if (foundMetadata) {
         return foundMetadata;
@@ -221,7 +221,7 @@ export default class WakanimService extends Extractor {
   }
 }
 
-function _isWakanimDRMMetadata(object: unknown): object is WakanimDRMMetadata {
+function _isWakanimDrmMetadata(object: unknown): object is WakanimDrmMetadata {
   return (
     typeof object === "object" &&
     (object as object).hasOwnProperty("file") &&
@@ -270,17 +270,17 @@ function _isWakanimDRMMetadata(object: unknown): object is WakanimDRMMetadata {
   );
 }
 
-type WakanimDRMMetadata = {
+type WakanimDrmMetadata = {
   file: string;
   drm: {
     widevine: {
       url: string;
-      headers: WakanimDRMMetadataHeaders;
+      headers: WakanimDrmMetadataHeaders;
     };
   };
 };
 
-type WakanimDRMMetadataHeaders = [
+type WakanimDrmMetadataHeaders = [
   {
     name: "Authorization";
     value: string;
