@@ -32,32 +32,32 @@ export class Logger {
     if (this._config.silent) {
       return;
     }
-    process.stderr.write(this._format(component, "INFO", false, objects.join(", ")));
+    process.stderr.write(this.format(component, "INFO", false, objects.join(", ")));
   }
 
   warn(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this._format(component, "WARNING", false, `${chalk.yellow("WARNING")}, ${objects.join(", ")}`));
+    process.stderr.write(this.format(component, "WARNING", false, `${chalk.yellow("WARNING")}, ${objects.join(", ")}`));
   }
 
   error(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this._format(component, "ERROR", false, chalk.redBright(objects.join(", "))));
+    process.stderr.write(this.format(component, "ERROR", false, chalk.redBright(objects.join(", "))));
   }
 
   debug(component?: string, ...objects: unknown[]) {
     if (!this._config.verbose) {
       return;
     }
-    process.stderr.write(this._format(component, "DEBUG", false, objects.join(", ")));
+    process.stderr.write(this.format(component, "DEBUG", false, objects.join(", ")));
   }
 
   jsonDump(level: "DEBUG" | "INFO", component: string | undefined, object: unknown) {
     if (!this._config.verbose) {
       return;
     }
-    (level === "INFO" ? process.stdout : process.stderr).write(this._format(component, level, false, JSON.stringify(object, null, 2)));
+    (level === "INFO" ? process.stdout : process.stderr).write(this.format(component, level, false, JSON.stringify(object)));
   }
 
-  private _format(component: string | undefined, level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
+  format(component: string | undefined, level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
     const date = new Date();
     const dateString = chalk.greenBright(`${date.toLocaleTimeString()},${date.getMilliseconds()}`);
     const componentString = chalk.blue(!!component ? component : this._baseComponent);

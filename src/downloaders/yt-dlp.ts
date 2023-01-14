@@ -1,34 +1,195 @@
+import chalk from "chalk";
+import ProgressBar from "progress";
+import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
-import { Download, Downloader } from "../service.js";
+import { Config } from "../index.js";
+import { Logger } from "../io.js";
+import {
+  ContainerDownload,
+  Download,
+  DownloadedFile,
+  Downloader,
+  EpisodeDownload,
+  EpisodeMetadata,
+  isContainerMetadata,
+  Metadata
+} from "../service.js";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
 export default class YT_DLP_Downloader extends Downloader {
+  private _config: Config;
+  private _logger: Logger;
+
+  constructor(config: Config, logger: Logger) {
+    super();
+    this._config = config;
+    this._logger = logger;
+  }
+
   initialize = undefined;
   release = undefined;
+
   checkResponsibility(): boolean {
     return true;
   }
-  async download(url: string): Promise<Download | null> {
-    const args: ExecutionArguments = [`"${url}"`];
-    const child = await binaryExecutor.spawn(args);
-    throw new Error("Method not implemented.");
+
+  async download(metadata: Metadata): Promise<Download> {
+    const isContainer = isContainerMetadata(metadata);
+    if (isContainer) {
+      if (!metadata.contents) {
+        throw new Error("No downloadable episodes found.");
+      }
+      const episodes: EpisodeDownload[] = [];
+      for (const episodeMetadata of metadata.contents) {
+        episodes.push(await this._downloadEpisode(episodeMetadata));
+      }
+      const containerDownload: ContainerDownload = {
+        contents: episodes,
+        type: "container",
+        title: metadata.title,
+        metadata: metadata
+      };
+      if (metadata.source.manifest?.cleanup) {
+        metadata.source.manifest?.cleanup();
+      }
+      return containerDownload;
+    } else {
+      const episode = await this._downloadEpisode(metadata);
+      if (metadata.source.manifest?.cleanup) {
+        metadata.source.manifest?.cleanup();
+      }
+      return episode;
+    }
   }
+
+  private async _downloadEpisode(metadata: EpisodeMetadata): Promise<EpisodeDownload> {
+    const fileId = uuidv4();
+    const manifest = metadata.source.manifest;
+    const fetchedDownloadMetadata = await fetchDownloadMetadata(!!manifest ? manifest.url : metadata.source.url, fileId);
+    if (!fetchedDownloadMetadata) {
+      throw new Error("an error occurred while fetching the metadata");
+    }
+    const isPlaylist = isPlaylistMetadata(fetchedDownloadMetadata);
+    if (isPlaylist) {
+      throw new Error("Episodes can't be playlists at the same time");
+    }
+
+    this._logger.information("yt-dlp", `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
+
+    const files: DownloadedFile[] = [];
+    for (const format of fetchedDownloadMetadata.requested_formats) {
+      files.push(await this._downloadFormat(format, fileId));
+    }
+
+    const download: EpisodeDownload = {
+      files: files,
+      type: "episode",
+      season: metadata.season,
+      title: metadata.title,
+      metadata: metadata
+    };
+    return download;
+  }
+
+  private async _downloadFormat(format: Format, fileId: string): Promise<DownloadedFile> {
+    const args: ExecutionArguments = [
+      "--quiet",
+      "--allow-unplayable-formats",
+      "--newline",
+      "--progress",
+      ["--concurrent-fragments", `${typeof this._config.concurrentFragments === "boolean" ? 1 : this._config.concurrentFragments}`],
+      ["--format", format.format_id],
+      ["--output-na-placeholder", "0"],
+      ["--progress-template", "download:[download_info];%(progress.downloaded_bytes)s;%(progress.total_bytes)s"],
+      ["--output", `${fileId}.%(format_id)s.%(ext)s`],
+      `${format.manifest_url ?? format.url}`
+    ];
+    const progressBar: ProgressBar = this._createProgressBar(format);
+    const child = await binaryExecutor.spawn(args);
+    let errorOutput = "\n";
+    child.stderr?.on("data", (data) => (errorOutput = errorOutput + data));
+    child.stdout?.on("data", (data) => {
+      let regex: RegExpExecArray | null;
+      if (!!(regex = /\[download_info\]\;([\-0-9]*)\;([\-0-9]*)/gi.exec(data))) {
+        //https://regex101.com/r/fnfL5y/2
+        const downloadedBytes = Number(regex[1]);
+        let totalBytes = Number(regex[2]);
+        totalBytes = !!totalBytes ? totalBytes : downloadedBytes + 1;
+        if (progressBar.total !== totalBytes) {
+          progressBar.total = totalBytes;
+        }
+        if (!progressBar.complete) {
+          progressBar.tick(downloadedBytes - progressBar.curr, {
+            progress: Number(downloadedBytes / 1000000).toFixed(2),
+            size: Number(totalBytes / 1000000).toFixed(2)
+          });
+        }
+      }
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.on("exit", (exitCode) => {
+        if (exitCode === 0) {
+          resolve();
+        } else {
+          this._logger.error(this.name, errorOutput);
+          reject();
+        }
+      });
+    });
+    const file: DownloadedFile = {
+      encrypted: !!format.has_drm,
+      format: {
+        id: format.format_id,
+        bitrate: format.tbr ?? format.vbr ?? format.abr,
+        sampleRate: format.asr || undefined,
+        width: format.width || undefined,
+        height: format.height || undefined
+      },
+      path: `${fileId}.${format.format_id}.${format.ext}`
+    };
+    return file;
+  }
+
+  private _createProgressBar(format: Format) {
+    return new ProgressBar(
+      this._logger.format(
+        "yt-dlp",
+        "INFO",
+        false,
+        `Downloading "${format.format_id}.${format.ext}" :elapseds [:bar] ${chalk.blue(":percent")} :progress/:sizeMiB ETA: ${chalk.yellow(":eta")}s`
+      ),
+      {
+        total: 0,
+        width: 30,
+        complete: "#",
+        incomplete: " "
+      }
+    );
+  }
+
   get name(): string {
     return "yt-dlp";
   }
+
   get version(): string {
     return "0.0.1";
   }
 }
 
-export async function fetchMetadata(url: string): Promise<Metadata | null> {
-  const args: ExecutionArguments = ["-J", "--allow-unplayable-formats", `"${url}"`];
+export async function fetchDownloadMetadata(url: string, fileId: string): Promise<DownloadMetadata | null> {
+  const args: ExecutionArguments = [
+    "--quiet",
+    "--allow-unplayable-formats",
+    "--dump-single-json",
+    ["--output", `${fileId}.%(format_id)s.%(ext)s`],
+    `${url}`
+  ];
   const stdout = await binaryExecutor.execute(args);
   return JSON.parse(stdout);
 }
 
-export function isPlaylistMetadata(metadata: Metadata): metadata is PlaylistMetadata {
+export function isPlaylistMetadata(metadata: DownloadMetadata): metadata is PlaylistMetadata {
   return (
     !!metadata &&
     (metadata._type === "playlist" ||
@@ -36,7 +197,7 @@ export function isPlaylistMetadata(metadata: Metadata): metadata is PlaylistMeta
   );
 }
 
-export type Metadata = PlaylistMetadata | SourceMetadata;
+export type DownloadMetadata = PlaylistMetadata | SourceMetadata;
 
 export interface MetadataBase {
   _version: Version;
@@ -251,6 +412,8 @@ export interface Fragment {
 }
 
 export interface RequestedDownload {
+  _filename: string;
+  __write_download_archive: boolean;
   format: string;
   format_id: string;
   ext: FileEXT;
@@ -268,8 +431,6 @@ export interface RequestedDownload {
   abr?: number;
   asr?: number;
   epoch: number;
-  _filename: string;
-  __write_download_archive: boolean;
   requested_formats?: Format[];
   language?: string;
   fps?: number;

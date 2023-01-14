@@ -17,7 +17,7 @@ export abstract class Downloader {
   abstract initialize?(): Promise<void> | void;
   abstract release?(): Promise<void> | void;
   abstract checkResponsibility(url: string): boolean;
-  abstract download(url: string): Promise<Download | null>;
+  abstract download(metadata: Metadata): Promise<Download | null>;
   abstract get name(): string;
   abstract get version(): string;
   get ready(): boolean {
@@ -25,28 +25,32 @@ export abstract class Downloader {
   }
 }
 
-function isContainerDownload(download: Download): download is ContainerDownload {
+export function isContainerDownload(download: Download): download is ContainerDownload {
   return download.type === "container";
 }
 
-function isContainerMetadata(metadata: Metadata): metadata is ContainerMetadata {
+export function isContainerMetadata(metadata: Metadata): metadata is ContainerMetadata {
   return metadata.type === "container";
 }
 
-export interface Download {
+export type Download = ContainerDownload | EpisodeDownload;
+
+interface DownloadBase {
   type: DataType;
   title?: string;
 }
 
-export interface ContainerDownload extends Download {
+export interface ContainerDownload extends DownloadBase {
   type: "container";
   contents?: EpisodeDownload[];
+  metadata: ContainerMetadata;
 }
 
-export interface EpisodeDownload extends Download {
+export interface EpisodeDownload extends DownloadBase {
   type: "episode";
   season?: number | null;
   files: DownloadedFile[];
+  metadata: EpisodeMetadata;
 }
 
 export interface DownloadedFile {
@@ -57,39 +61,26 @@ export interface DownloadedFile {
 
 export interface Format {
   id: string;
-  type: FormatType;
   bitrate?: number;
-}
-
-export interface VideoFormat extends Format {
-  type: "video";
   width?: number;
   height?: number;
+  sampleRate?: number;
 }
 
-export interface AudioFormat extends Format {
-  type: "audio";
-  sampleRate: number;
-}
+export type Metadata = ContainerMetadata | EpisodeMetadata;
 
-export interface SubtitleFormat extends Format {
-  type: "subtitle";
-}
-
-export type FormatType = "video" | "audio" | "subtitle";
-
-export interface Metadata {
+interface MetadataBase {
   type: DataType;
   title?: string;
   source: Source;
 }
 
-export interface ContainerMetadata extends Metadata {
+export interface ContainerMetadata extends MetadataBase {
   type: "container";
   contents?: EpisodeMetadata[];
 }
 
-export interface EpisodeMetadata extends Metadata {
+export interface EpisodeMetadata extends MetadataBase {
   type: "episode";
   season?: number | null;
 }

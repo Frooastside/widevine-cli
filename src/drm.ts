@@ -1,10 +1,16 @@
 import cookie from "cookie";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import HttpsProxyAgent from "https-proxy-agent";
+import fetch from "node-fetch";
 import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
+import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Cookie } from "./cookie-parser";
 import { Config } from "./index.js";
-import { Logger } from "./io";
+import { Logger } from "./io.js";
+import { DownloadedFile } from "./service.js";
+
+const binaryExecutor = new BinaryExecutor("shaka-packager");
 
 export type LicenseInformation = {
   url: string;
@@ -83,33 +89,36 @@ export default class DrmSolver {
     }
   }
 
-  async solveDrm(licenseInformation: LicenseRequest): Promise<KeyContainer[]> {
-    const cookieHeader = licenseInformation.cookies
-      ? licenseInformation.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
+  async solveDrm(licenseRequestInformation: LicenseRequest, logger: Logger): Promise<KeyContainer[]> {
+    const cookieHeader = licenseRequestInformation.cookies
+      ? licenseRequestInformation.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
       : undefined;
     const headers: HeadersInit | undefined = cookieHeader
       ? {
-          ...licenseInformation.headers,
+          ...licenseRequestInformation.headers,
           cookie: cookieHeader
         }
-      : licenseInformation.headers;
+      : licenseRequestInformation.headers;
 
-    if (licenseInformation.pssh === undefined) {
+    if (licenseRequestInformation.pssh === undefined) {
       throw new Error("PSSH is missing!");
     }
 
     if (this._localContentDecryptionModule) {
+      logger.debug("DRM Solver", "trying local cdm first");
       try {
-        return await this._solveLocalDrm(licenseInformation.url, licenseInformation.pssh, headers);
+        return await this._solveLocalDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
       } catch (error) {
-        return await this._solveRemoteDrm(licenseInformation.url, licenseInformation.pssh, headers);
+        logger.debug("DRM Solver", "local cdm failed, try remote", error);
+        return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
       }
     } else {
-      return await this._solveRemoteDrm(licenseInformation.url, licenseInformation.pssh, headers);
+      logger.debug("DRM Solver", "skipping local cdm");
+      return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
     }
   }
 
-  private async _solveLocalDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
+  private async _solveLocalDrm(url: string, pssh: Buffer, logger: Logger, headers?: HeadersInit): Promise<KeyContainer[]> {
     if (!this._localContentDecryptionModule) {
       throw new Error("local cdm was disabled but you want to use it anyway");
     }
@@ -123,11 +132,13 @@ export default class DrmSolver {
     if (!response.ok) {
       throw new Error(response.statusText);
     }
-    return session.parseLicense(Buffer.from(await response.arrayBuffer()));
+    return session.parseLicense(Buffer.from(await response.arrayBuffer())).filter((key) => key.kid !== "1");
   }
 
-  private async _solveRemoteDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
+  private async _solveRemoteDrm(url: string, pssh: Buffer, logger: Logger, headers?: HeadersInit): Promise<KeyContainer[]> {
+    const proxyAgent = new HttpsProxyAgent.HttpsProxyAgent("http://127.0.0.1:8888");
     const response = await fetch("https://cdrm-project.com/api", {
+      agent: proxyAgent,
       method: "POST",
       body: JSON.stringify({
         license: url,
@@ -139,10 +150,22 @@ export default class DrmSolver {
     if (!response.ok) {
       throw new Error(response.statusText);
     }
-    const responseText = await response.json();
+    const responseText = (await response.json()) as any;
+    logger.jsonDump("DEBUG", "DRM Solver", responseText);
     return responseText.keys
       .map((keyContainer: { key: string }) => keyContainer.key.split(":"))
       .map((keyContainer: [string, string]) => ({ kid: keyContainer[0], key: keyContainer[1] }));
+  }
+
+  async decrpytFile(file: DownloadedFile, keys: KeyContainer[]) {
+    const args: ExecutionArguments = [
+      "--enable_raw_key_decryption",
+      ["--keys", keys.map((key, index) => `label=key_${index}:key_id=${key.kid}:key=${key.key}`).join(",")],
+      `in=${file.path},out=_${file.path},stream=${0}`
+    ];
+    await binaryExecutor.execute(args);
+    file.encrypted = false;
+    file.path = `_${file.path}`;
   }
 }
 
@@ -162,7 +185,7 @@ export async function extractPsshData(logger: Logger, rawManifest: string): Prom
   try {
     psshs = _extractPsshDictionaryDefaultMPD(<DefaultManifestFile>manifest) ?? psshs;
   } catch (error) {
-    logger.debug("DRM Solver", "default pssh extractor failed", error, (<Error>error).stack);
+    logger.debug("DRM Solver", "default pssh extractor failed", error, (<Error>error)?.stack);
   }
   return psshs;
 }

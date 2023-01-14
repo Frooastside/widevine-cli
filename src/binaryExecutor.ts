@@ -1,5 +1,6 @@
 import { ChildProcess, exec as execProcess, spawn } from "child_process";
 import os from "os";
+import path from "path";
 import { promisify } from "util";
 
 const exec = promisify(execProcess);
@@ -17,7 +18,7 @@ export default class BinaryExecutor {
 
   constructor(product: Product) {
     this._product = product;
-    this._executionPath = `./bin/${this._product}${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
+    this._executionPath = `bin${path.sep}${this._product}${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
   }
 
   async execute(args: ExecutionArguments): Promise<string> {
@@ -28,7 +29,7 @@ export default class BinaryExecutor {
   }
 
   async spawn(args: ExecutionArguments): Promise<ChildProcess> {
-    return spawn(`${this._executionPath}`, args.flat(), {});
+    return spawn(`"${this._executionPath}"`, args.flat(), { shell: true });
   }
 }
 

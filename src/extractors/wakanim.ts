@@ -1,4 +1,6 @@
 import cookie from "cookie";
+import { randomUUID } from "crypto";
+import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
 import fetch from "node-fetch";
@@ -153,7 +155,7 @@ export default class WakanimService extends Extractor {
       };
       return downloadMetadata;
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error).stack);
+      this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
       return null;
     } finally {
@@ -181,7 +183,7 @@ export default class WakanimService extends Extractor {
           return foundMetadata;
         }
       } catch (error) {
-        this._logger.debug(this.name, "an error occurred while trying to find metadata objects, ignoring", error, (<Error>error).stack);
+        this._logger.debug(this.name, "an error occurred while trying to find metadata objects, ignoring", error, (<Error>error)?.stack);
       }
     }
 
@@ -209,6 +211,7 @@ export default class WakanimService extends Extractor {
       }
     });
     const manifest = await response.text();
+    writeFileSync(randomUUID() + ".xml", manifest);
     return manifest;
   }
 

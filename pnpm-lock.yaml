@@ -4,10 +4,12 @@ specifiers:
   '@commander-js/extra-typings': ^9.4.1
   '@types/cookie': ^0.5.1
   '@types/koa': ^2.13.5
+  '@types/langs': ^2.0.1
   '@types/lzma-native': ^4.0.1
   '@types/mocha': ^10.0.1
   '@types/node': ^18.11.18
   '@types/progress': ^2.0.5
+  '@types/prompts': ^2.4.2
   '@types/tar-stream': ^2.2.2
   '@types/uuid': ^9.0.0
   '@typescript-eslint/eslint-plugin': ^5.48.1
@@ -22,8 +24,10 @@ specifiers:
   extract-zip: ^2.0.1
   fast-xml-parser: ^4.0.13
   holz-provider: ^0.3.1
+  https-proxy-agent: ^5.0.1
   husky: ^8.0.3
   koa: ^2.14.1
+  langs: ^2.0.0
   lint-staged: ^13.0.3
   long: ^5.2.1
   lzma-native: ^8.0.6
@@ -59,7 +63,9 @@ dependencies:
   extract-zip: 2.0.1
   fast-xml-parser: 4.0.13
   holz-provider: 0.3.1_puppeteer@19.5.0
+  https-proxy-agent: 5.0.1
   koa: 2.14.1
+  langs: 2.0.0
   long: 5.2.1
   lzma-native: 8.0.6
   meriyah: 4.3.3
@@ -80,10 +86,12 @@ devDependencies:
   '@commander-js/extra-typings': 9.4.1_commander@9.4.1
   '@types/cookie': 0.5.1
   '@types/koa': 2.13.5
+  '@types/langs': 2.0.1
   '@types/lzma-native': 4.0.1
   '@types/mocha': 10.0.1
   '@types/node': 18.11.18
   '@types/progress': 2.0.5
+  '@types/prompts': 2.4.2
   '@types/tar-stream': 2.2.2
   '@types/uuid': 9.0.0
   '@typescript-eslint/eslint-plugin': 5.48.1_3jon24igvnqaqexgwtxk6nkpse
@@ -456,6 +464,10 @@ packages:
       '@types/node': 18.11.18
     dev: true
 
+  /@types/langs/2.0.1:
+    resolution: {integrity: sha512-UXtaAa6zsgui5kf2MPhn89LFmOtcWqcz+uhSMj1BssPzvJOrY1JVrEitOQaPJrGcUH5xWRsGuhP80M1EXVct9Q==}
+    dev: true
+
   /@types/long/4.0.2:
     resolution: {integrity: sha512-MqTGEo5bj5t157U6fA/BiDynNkn0YknVdh48CMPkTSpFTVmvao5UQmm7uEF6xBEo7qIMAlY/JSleYaE6VOdpaA==}
     dev: true
@@ -489,6 +501,13 @@ packages:
     resolution: {integrity: sha512-ZYYVc/kSMkhH9W/4dNK/sLNra3cnkfT2nJyOAIDY+C2u6w72wa0s1aXAezVtbTsnN8HID1uhXCrLwDE2ZXpplg==}
     dependencies:
       '@types/node': 18.11.18
+    dev: true
+
+  /@types/prompts/2.4.2:
+    resolution: {integrity: sha512-TwNx7qsjvRIUv/BCx583tqF5IINEVjCNqg9ofKHRlSoUHE62WBHrem4B1HGXcIrG511v29d1kJ9a/t2Esz7MIg==}
+    dependencies:
+      '@types/node': 18.11.18
+      kleur: 3.0.3
     dev: true
 
   /@types/qs/6.9.7:
@@ -2144,6 +2163,11 @@ packages:
       is-buffer: 1.1.6
     dev: false
 
+  /kleur/3.0.3:
+    resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
+    engines: {node: '>=6'}
+    dev: true
+
   /koa-compose/4.1.0:
     resolution: {integrity: sha512-8ODW8TrDuMYvXRwra/Kh7/rJo9BtOfPc6qO8eAfC80CnCvSjSl0bkRM24X6/XBBEyj0v1nRUQ1LyOy3dbqOWXw==}
     dev: false
@@ -2185,6 +2209,10 @@ packages:
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
+    dev: false
+
+  /langs/2.0.0:
+    resolution: {integrity: sha512-v4pxOBEQVN1WBTfB1crhTtxzNLZU9HPWgadlwzWKISJtt6Ku/CnpBrwVy+jFv8StjxsPfwPFzO0CMwdZLJ0/BA==}
     dev: false
 
   /lazy-cache/0.2.7:

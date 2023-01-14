@@ -1,6 +1,9 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import chalk from "chalk";
+import dotenv from "dotenv";
 import App from "./app.js";
+
+dotenv.config();
 
 export type Config = typeof config;
 
@@ -20,8 +23,10 @@ const program = new Command()
   .addOption(new Option("   --ignore-errors"))
   .addOption(new Option("   --skip-questions").conflicts("interactive"))
   .addOption(new Option("-D --only-drm"))
+  .addOption(new Option("   --skip-drm"))
   .addOption(new Option("   --force-local-drm").conflicts("forceRemoteDrm"))
-  .addOption(new Option("   --force-remote-drm").conflicts("forceLocalDrm"));
+  .addOption(new Option("   --force-remote-drm").conflicts("forceLocalDrm"))
+  .addOption(new Option("-N --concurrent-fragments [threads]").default(1).argParser((string) => Number(string ?? "1")));
 
 program.parse(process.argv);
 
@@ -36,7 +41,7 @@ const app = new App(config);
 try {
   await app.start();
 } catch (error) {
-  program.error((<Error>error).message);
+  program.error((<Error>error)?.message);
 } finally {
   app.release();
 }
