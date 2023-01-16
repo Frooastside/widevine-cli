@@ -49,9 +49,8 @@ if (config.jellyfinRoot === true) {
 const app = new App(config);
 
 try {
-  await app.start();
+  app.start().then(() => app.release());
 } catch (error) {
-  program.error((<Error>error)?.message);
-} finally {
+  program.error((error as Error)?.message);
   app.release();
 }

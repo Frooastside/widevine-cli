@@ -23,6 +23,10 @@
   "main": "dist/index.js",
   "bin": {},
   "type": "module",
+  "pkg": {
+    "scripts": "build/**/*.js",
+    "target": "node18"
+  },
   "scripts": {
     "start": "node -r source-map-support/register dist/index.js -N 16 --post-processor jellyfin --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7512/-dakaichi-my-number-1-omu-staffel-1-folge-13-omu\"",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
@@ -32,6 +36,8 @@
     "lint:fix": "eslint --fix --ext ts .",
     "pretty": "prettier --write .",
     "build": "tsc --incremental",
+    "bundle": "pnpm build && esbuild dist/index.js --bundle --platform=node --target=node18 --minify --outfile=build/index.cjs",
+    "package": "pnpm bundle && pkg --compression brotli --output build/wvcli build/index.cjs",
     "clean": "rimraf dist && rimraf bin && npm run postinstall",
     "prepare": "husky install",
     "postinstall": "npm run build && node -r source-map-support/register install.js"
@@ -50,12 +56,15 @@
     "@types/uuid": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^5.48.1",
     "@typescript-eslint/parser": "^5.48.1",
+    "clone-deep": "^4.0.1",
+    "esbuild": "^0.17.1",
     "eslint": "^8.32.0",
     "eslint-config-prettier": "^8.6.0",
     "husky": "^8.0.3",
     "lint-staged": "^13.0.3",
     "mocha": "^10.2.0",
     "nodemon": "^2.0.20",
+    "pkg": "^5.8.0",
     "prettier": "2.8.3",
     "rimraf": "^4.0.7",
     "source-map-support": "^0.5.21",
@@ -91,6 +100,14 @@
     "puppeteer-extra-plugin-stealth": "^2.11.1",
     "tar-stream": "^3.0.0",
     "uuid": "^9.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "clone-deep": "$clone-deep"
+    }
+  },
+  "overrides": {
+    "clone-deep": "$clone-deep"
   },
   "lint-staged": {
     "*.ts": "eslint --ext ts --cache --fix",

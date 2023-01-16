@@ -7,11 +7,11 @@ import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
 import { cookieJar } from "../cookie-parser.js";
-import { extractPsshData, LicenseInformation } from "../drm.js";
+import { extractPsshData } from "../drm.js";
 import { extractObject } from "../extractor.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
-import { Extractor, Metadata } from "../service.js";
+import { EpisodeMetadata, Extractor, Metadata } from "../service.js";
 
 export default class WakanimService extends Extractor {
   private _config: Config;
@@ -22,6 +22,7 @@ export default class WakanimService extends Extractor {
   private _koaServer: Server;
   private _koaAddress: string;
   private _manifests: Record<string, string> = {};
+  private _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36";
 
   constructor(config: Config, logger: Logger) {
     super();
@@ -53,7 +54,7 @@ export default class WakanimService extends Extractor {
 
   async initialize() {
     this._initialized = true;
-    this._browser = await puppeteer.launch({
+    this._browser = <Browser>await puppeteer.launch({
       headless: !this._config.visual,
       channel:
         typeof this._config.chromeChannel === "string"
@@ -61,6 +62,7 @@ export default class WakanimService extends Extractor {
           : "chrome",
       args: [`--window-size=${840},${560}`]
     });
+    this._userAgent = (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome");
   }
 
   async release() {
@@ -81,41 +83,30 @@ export default class WakanimService extends Extractor {
   checkResponsibility(url: string): boolean {
     return /^(https?:)\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/(show|episode)\/[0-9]+\/[\-a-zA-Z0-9]+\/?(season\/[0-9]+\/[\-a-zA-Z0-9]+)?\/?/gi.test(
       url
-    ); //https://regex101.com/r/y0G0tj/2
+    ) /* https://regex101.com/r/y0G0tj/2 */;
   }
 
   async fetchMetadata(url: string): Promise<Metadata | null> {
-    if (!this._browser) {
-      throw new Error("Not initialized!");
+    if (
+      /^(https?:)\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/(episode)\/[0-9]+\/[\-a-zA-Z0-9]+\/?/gi.test(
+        url
+      ) /* https://regex101.com/r/2T6ZsI/1 */
+    ) {
+      return await this._fetchEpisodeMetadata(url);
+    } else {
+      throw new Error("whole seasons / containers are not supported yet");
     }
+  }
+
+  private async _fetchEpisodeMetadata(url: string): Promise<EpisodeMetadata | null> {
     const pages: Page[] = [];
     try {
-      const page = await this._browser.newPage();
-      pages.push(page);
-      page.on("popup", (page) => (page ? pages.push(page) : null));
-      await page.setCookie(...cookieJar);
-      await page.goto(url, {
-        waitUntil: "networkidle0",
-        timeout: 20000
-      });
-
-      await page.waitForSelector("#main-iframe, #breakpoints");
-      await delay(3000);
-      const result = await page.findRecaptchas();
-      if (result.captchas.length > 0) {
-        await page.solveRecaptchas();
-        await delay(2000);
-        await page.waitForSelector("#main-iframe, #breakpoints");
-      }
-
-      const embeddedMetadata = await this._analyzeScripts(page);
-
+      const page = await this._setupPage(url, pages);
+      const embeddedMetadata = await this._extractDrmMetadata(page);
       if (embeddedMetadata === null) {
         throw new Error("Embedded Metadata was not found! Make sure you're logged in");
       }
-
       const manifest = await this._fetchWakanimManifest(embeddedMetadata.file);
-
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
@@ -123,6 +114,9 @@ export default class WakanimService extends Extractor {
 
       const rqId: string | undefined = await page.evaluate(() => (window as { rqId?: string }).rqId);
       const rqIdS: string | undefined = await page.evaluate(() => (window as { rqIdS?: string }).rqIdS);
+      if (!rqId || !rqIdS) {
+        throw new Error("Essential fields were missing!");
+      }
       const episodeIndex = await page.evaluate(
         () => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"episodeNumber\"]"))?.content
       );
@@ -135,22 +129,6 @@ export default class WakanimService extends Extractor {
       );
       const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"name\"]"))?.content);
 
-      if (!rqId || !rqIdS) {
-        throw new Error("Essential fields were missing!");
-      }
-
-      const licenseInformation: LicenseInformation = {
-        url: embeddedMetadata.drm.widevine.url,
-        headers: {
-          "user-agent": (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome"),
-          authorization: embeddedMetadata.drm.widevine.headers[0].value,
-          userid: embeddedMetadata.drm.widevine.headers[1].value,
-          d1: embeddedMetadata.drm.widevine.headers[2].value,
-          rqid: rqId,
-          rqids: rqIdS
-        },
-        psshData: psshData
-      };
       const episodeId = uuidv4();
       if (!this._config.simulate && !this._config.onlyDrm) {
         this._makeManifestAvailable(episodeId, manifest);
@@ -167,7 +145,18 @@ export default class WakanimService extends Extractor {
             url: `${this._koaAddress}/${episodeId}`,
             cleanup: () => this._removeManifest(episodeId)
           },
-          licenseInformation: licenseInformation
+          licenseInformation: {
+            url: embeddedMetadata.drm.widevine.url,
+            headers: {
+              "user-agent": this._userAgent,
+              authorization: embeddedMetadata.drm.widevine.headers[0].value,
+              userid: embeddedMetadata.drm.widevine.headers[1].value,
+              d1: embeddedMetadata.drm.widevine.headers[2].value,
+              rqid: rqId,
+              rqids: rqIdS
+            },
+            psshData: psshData
+          }
         }
       };
       return metadata;
@@ -180,22 +169,42 @@ export default class WakanimService extends Extractor {
     }
   }
 
-  private async _analyzeScripts(page: Page): Promise<WakanimDrmMetadata | null> {
+  private async _setupPage(url: string, pages: Page[]): Promise<Page> {
+    if (!this._browser) {
+      throw new Error("Not initialized!");
+    }
+    const page = await this._browser.newPage();
+    pages.push(page);
+    page.on("popup", (page) => (page ? pages.push(page) : null));
+    await page.setCookie(...cookieJar);
+    await page.goto(url, {
+      waitUntil: "networkidle0",
+      timeout: 20000
+    });
+    await page.waitForSelector("#main-iframe, #breakpoints");
+    await delay(3000);
+    const result = await page.findRecaptchas();
+    if (result.captchas.length > 0) {
+      await page.solveRecaptchas();
+      await delay(2000);
+      await page.waitForSelector("#main-iframe, #breakpoints");
+    }
+    return page;
+  }
+
+  private async _extractDrmMetadata(page: Page): Promise<WakanimDrmMetadata | null> {
     const scripts = await Promise.all(
       (
         await page.$$("script")
       ).map(async (scriptHandle) => ({ handle: scriptHandle, innerHTML: await scriptHandle.evaluate((script) => script.innerHTML) }))
     );
-
     for (const script of scripts) {
       if (!script.innerHTML || !script.innerHTML.trim()) {
         continue;
       }
       const unparsed = script.innerHTML.trim();
-
       try {
         const foundMetadata = extractObject<WakanimDrmMetadata>(unparsed, _isWakanimDrmMetadata);
-
         if (foundMetadata) {
           return foundMetadata;
         }
@@ -203,7 +212,6 @@ export default class WakanimService extends Extractor {
         this._logger.debug(this.name, "an error occurred while trying to find metadata objects, ignoring", error, (<Error>error)?.stack);
       }
     }
-
     return null;
   }
 
@@ -224,7 +232,7 @@ export default class WakanimService extends Extractor {
     this._logger.debug(this.name, "fetching manifest");
     const response = await fetch(url, {
       headers: {
-        "user-agent": (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome"),
+        "user-agent": this._userAgent,
         cookie: cookieHeader
       }
     });
@@ -250,48 +258,45 @@ export default class WakanimService extends Extractor {
 function _isWakanimDrmMetadata(object: unknown): object is WakanimDrmMetadata {
   return (
     typeof object === "object" &&
-    (object as object).hasOwnProperty("file") &&
-    typeof (object as { file: unknown }).file === "string" &&
-    (object as object).hasOwnProperty("drm") &&
-    typeof (object as { drm: unknown }).drm === "object" &&
-    (object as { drm: object }).drm.hasOwnProperty("widevine") &&
-    typeof (object as { drm: { widevine: unknown } }).drm.widevine === "object" &&
-    (object as { drm: { widevine: object } }).drm.widevine.hasOwnProperty("url") &&
-    typeof (object as { drm: { widevine: { url: unknown } } }).drm.widevine.url === "string" &&
-    typeof (object as { drm: { widevine: { headers: unknown } } }).drm.widevine.headers === "object" &&
-    !!Object.keys((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers).find(
+    (<object>object).hasOwnProperty("file") &&
+    typeof (<{ file: unknown }>object).file === "string" &&
+    (<object>object).hasOwnProperty("drm") &&
+    typeof (<{ drm: unknown }>object).drm === "object" &&
+    (<{ drm: object }>object).drm.hasOwnProperty("widevine") &&
+    typeof (<{ drm: { widevine: unknown } }>object).drm.widevine === "object" &&
+    (<{ drm: { widevine: object } }>object).drm.widevine.hasOwnProperty("url") &&
+    typeof (<{ drm: { widevine: { url: unknown } } }>object).drm.widevine.url === "string" &&
+    typeof (<{ drm: { widevine: { headers: unknown } } }>object).drm.widevine.headers === "object" &&
+    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
       (key) =>
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: unknown })[key] === "object" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("name") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: unknown } })[key].name ===
+        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
+        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
           "string" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: string } })[key].name ===
+        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
           "Authorization" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("value") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { value: unknown } })[key].value ===
-          "string"
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
+        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
     ) &&
-    !!Object.keys((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as object).find(
+    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
       (key) =>
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: unknown })[key] === "object" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("name") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: unknown } })[key].name ===
+        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
+        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
           "string" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: string } })[key].name === "UserId" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("value") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { value: unknown } })[key].value ===
-          "string"
+        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name === "UserId" &&
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
+        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
     ) &&
-    !!Object.keys((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as object).find(
+    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
       (key) =>
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: unknown })[key] === "object" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("name") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: unknown } })[key].name ===
+        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
+        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
           "string" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { name: string } })[key].name === "D1" &&
-        ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: object })[key].hasOwnProperty("value") &&
-        typeof ((object as { drm: { widevine: { headers: object } } }).drm.widevine.headers as { [key: string]: { value: unknown } })[key].value ===
-          "string"
+        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name === "D1" &&
+        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
+        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
     )
   );
 }
