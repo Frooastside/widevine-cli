@@ -1,4 +1,5 @@
 import enquirer from "enquirer";
+import { rm as rawRm } from "fs";
 import { Holz } from "holz-provider";
 import { KeyContainer } from "node-widevine";
 import { exit } from "process";
@@ -8,6 +9,7 @@ import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { URL } from "url";
+import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
@@ -17,7 +19,6 @@ import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
 import GenericPostProcessor from "./post-processors/generic.js";
-import { existsSync, mkdir as rawMkdir, rename as rawRename, rm as rawRm, statSync } from "fs";
 import Jellyfin from "./post-processors/jellyfin.js";
 import {
   ContainerDownload,
@@ -30,7 +31,6 @@ import {
   Output,
   PostProcessor
 } from "./service.js";
-import { promisify } from "util";
 
 const rm = promisify(rawRm);
 
