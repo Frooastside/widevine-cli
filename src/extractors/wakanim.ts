@@ -108,13 +108,13 @@ export default class WakanimService extends Extractor {
         await page.waitForSelector("#main-iframe, #breakpoints");
       }
 
-      const metadata = await this._analyzeScripts(page);
+      const embeddedMetadata = await this._analyzeScripts(page);
 
-      if (metadata === null) {
-        throw new Error("Metadata is missing! Make sure you're logged in");
+      if (embeddedMetadata === null) {
+        throw new Error("Embedded Metadata was not found! Make sure you're logged in");
       }
 
-      const manifest = await this._fetchWakanimManifest(metadata.file);
+      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file);
 
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
@@ -123,18 +123,29 @@ export default class WakanimService extends Extractor {
 
       const rqId: string | undefined = await page.evaluate(() => (window as { rqId?: string }).rqId);
       const rqIdS: string | undefined = await page.evaluate(() => (window as { rqIdS?: string }).rqIdS);
+      const episodeIndex = await page.evaluate(
+        () => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"episodeNumber\"]"))?.content
+      );
+      const seasonIndex = await page.evaluate(
+        () =>
+          (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeason\"] meta[itemprop=\"seasonNumber\"]"))?.content
+      );
+      const container = await page.evaluate(
+        () => (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeries\"] meta[itemprop=\"name\"]"))?.content
+      );
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"name\"]"))?.content);
 
       if (!rqId || !rqIdS) {
         throw new Error("Essential fields were missing!");
       }
 
       const licenseInformation: LicenseInformation = {
-        url: metadata.drm.widevine.url,
+        url: embeddedMetadata.drm.widevine.url,
         headers: {
           "user-agent": (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome"),
-          authorization: metadata.drm.widevine.headers[0].value,
-          userid: metadata.drm.widevine.headers[1].value,
-          d1: metadata.drm.widevine.headers[2].value,
+          authorization: embeddedMetadata.drm.widevine.headers[0].value,
+          userid: embeddedMetadata.drm.widevine.headers[1].value,
+          d1: embeddedMetadata.drm.widevine.headers[2].value,
           rqid: rqId,
           rqids: rqIdS
         },
@@ -144,8 +155,12 @@ export default class WakanimService extends Extractor {
       if (!this._config.simulate && !this._config.onlyDrm) {
         this._makeManifestAvailable(episodeId, manifest);
       }
-      const downloadMetadata: Metadata = {
+      const metadata: Metadata = {
         type: "episode",
+        title: title,
+        container: container,
+        season: !!seasonIndex ? Number(seasonIndex) : undefined,
+        index: !!episodeIndex ? Number(episodeIndex) : undefined,
         source: {
           url: url,
           manifest: {
@@ -155,7 +170,7 @@ export default class WakanimService extends Extractor {
           licenseInformation: licenseInformation
         }
       };
-      return downloadMetadata;
+      return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);

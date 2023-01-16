@@ -47,7 +47,6 @@ export default class YT_DLP_Downloader extends Downloader {
       const containerDownload: ContainerDownload = {
         contents: episodes,
         type: "container",
-        title: metadata.title,
         metadata: metadata
       };
       if (metadata.source.manifest?.cleanup) {
@@ -85,8 +84,6 @@ export default class YT_DLP_Downloader extends Downloader {
     const download: EpisodeDownload = {
       files: files,
       type: "episode",
-      season: metadata.season,
-      title: metadata.title,
       metadata: metadata
     };
     return download;

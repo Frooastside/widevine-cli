@@ -166,7 +166,7 @@ export default class App {
 
   private async _handleMissingInformation(input: Download): Promise<Output | Output[]> {
     if (isContainerDownload(input)) {
-      let container = await this._title(input.title, true);
+      let container = await this._title(input.metadata.title, true);
       if (!container) {
         container = uuidv4();
         this._logger.warn(
@@ -177,7 +177,7 @@ export default class App {
       }
       const outputs: Output[] = [];
       for (const episode of input.contents ?? <EpisodeDownload[]>[]) {
-        let title = await this._title(episode.title, false);
+        let title = await this._title(episode.metadata.title, false);
         if (!title) {
           title = uuidv4();
           this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
@@ -205,8 +205,12 @@ export default class App {
 
       return outputs;
     } else {
-      const container = input.season === null || input.index === null ? null : (await this._title(undefined, true)) || null;
-      let title = await this._title(input.title, false);
+      console.log(input.metadata.container);
+      const container =
+        input.metadata.container ??
+        (input.metadata.season === null || input.metadata.index === null ? null : await this._title(input.metadata.container || undefined, true));
+      console.log(container);
+      let title = await this._title(input.metadata.title, false);
       if (!title) {
         title = uuidv4();
         this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
@@ -252,7 +256,7 @@ export default class App {
   }
 
   private async _index(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
-    let index: number | undefined | null = input.index;
+    let index: number | undefined | null = input.metadata.index;
     if (index === undefined) {
       if (this._config.skipQuestions) {
         index = !!container ? 0 : null;
@@ -269,14 +273,14 @@ export default class App {
           validate: (value: string) => !value || !isNaN(parseFloat(value))
         });
         index = !response.index ? null : Number(response.index);
-        input.index = index;
+        input.metadata.index = index;
       }
     }
     return index;
   }
 
   private async _season(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
-    let season: number | undefined | null = input.season;
+    let season: number | undefined | null = input.metadata.season;
     if (season === undefined) {
       if (this._config.skipQuestions) {
         season = !!container ? 1 : null;
@@ -293,7 +297,7 @@ export default class App {
           validate: (value: string) => !value || !isNaN(parseFloat(value))
         });
         season = !response.season ? null : Number(response.season);
-        input.season = season;
+        input.metadata.season = season;
       }
     }
     return season;
@@ -423,7 +427,7 @@ export default class App {
         cache[pssh.toString("base64")] = keyContainers;
       }
       this._logger.debug(undefined, `try to decrypt "${file.path}"`);
-      this._drm.decrpytFile(file, keyContainers);
+      await this._drm.decrpytFile(file, keyContainers);
       this._logger.information(undefined, `decrypted "${file.path}"`);
     }
     return true;

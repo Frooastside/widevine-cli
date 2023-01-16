@@ -51,7 +51,7 @@ export type Download = ContainerDownload | EpisodeDownload;
 
 interface DownloadBase {
   type: DataType;
-  title?: string;
+  metadata: Metadata;
 }
 
 export interface ContainerDownload extends DownloadBase {
@@ -62,8 +62,6 @@ export interface ContainerDownload extends DownloadBase {
 
 export interface EpisodeDownload extends DownloadBase {
   type: "episode";
-  season?: number | null;
-  index?: number | null;
   files: DownloadedFile[];
   metadata: EpisodeMetadata;
 }
@@ -97,6 +95,7 @@ export interface ContainerMetadata extends MetadataBase {
 
 export interface EpisodeMetadata extends MetadataBase {
   type: "episode";
+  container?: string | null;
   season?: number | null;
   index?: number | null;
 }
