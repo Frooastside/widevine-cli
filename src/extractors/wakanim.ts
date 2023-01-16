@@ -55,7 +55,10 @@ export default class WakanimService extends Extractor {
     this._initialized = true;
     this._browser = await puppeteer.launch({
       headless: !this._config.visual,
-      channel: "chrome",
+      channel:
+        typeof this._config.chromeChannel === "string"
+          ? (this._config.chromeChannel as "chrome" | "chrome-beta" | "chrome-dev" | "chrome-canary")
+          : "chrome",
       args: [`--window-size=${840},${560}`]
     });
   }
@@ -108,7 +111,7 @@ export default class WakanimService extends Extractor {
       const metadata = await this._analyzeScripts(page);
 
       if (metadata === null) {
-        throw new Error("Metdata is missing!");
+        throw new Error("Metadata is missing! Make sure you're logged in");
       }
 
       const manifest = await this._fetchWakanimManifest(metadata.file);
