@@ -1,14 +1,16 @@
 import cookie from "cookie";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import HttpsProxyAgent from "https-proxy-agent";
+import { existsSync, readFileSync, rm as rawRm } from "fs";
 import fetch from "node-fetch";
 import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
+import { promisify } from "util";
 import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Cookie } from "./cookie-parser";
 import { Config } from "./index.js";
 import { Logger } from "./io.js";
 import { DownloadedFile } from "./service.js";
+
+const rm = promisify(rawRm);
 
 const binaryExecutor = new BinaryExecutor("shaka-packager");
 
@@ -136,9 +138,7 @@ export default class DrmSolver {
   }
 
   private async _solveRemoteDrm(url: string, pssh: Buffer, logger: Logger, headers?: HeadersInit): Promise<KeyContainer[]> {
-    const proxyAgent = new HttpsProxyAgent.HttpsProxyAgent("http://127.0.0.1:8888");
     const response = await fetch("https://cdrm-project.com/api", {
-      agent: proxyAgent,
       method: "POST",
       body: JSON.stringify({
         license: url,
@@ -164,6 +164,7 @@ export default class DrmSolver {
       `in=${file.path},out=_${file.path},stream=${0}`
     ];
     await binaryExecutor.execute(args);
+    await rm(file.path);
     file.encrypted = false;
     file.path = `_${file.path}`;
   }
@@ -180,7 +181,6 @@ export async function extractPsshData(logger: Logger, rawManifest: string): Prom
     allowBooleanAttributes: true
   });
   const manifest = parser.parse(rawManifest, {});
-  writeFileSync("security/manifest.json", JSON.stringify(manifest, null, 2));
   let psshs: Record<string, Buffer> = {};
   try {
     psshs = _extractPsshDictionaryDefaultMPD(<DefaultManifestFile>manifest) ?? psshs;

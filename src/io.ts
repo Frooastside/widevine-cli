@@ -32,29 +32,29 @@ export class Logger {
     if (this._config.silent) {
       return;
     }
-    process.stderr.write(this.format(component, "INFO", false, objects.join(", ")));
+    process.stderr.write(this.format(component, "INFO", false, objects.join(", ")).concat("\n"));
   }
 
   warn(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this.format(component, "WARNING", false, `${chalk.yellow("WARNING")}, ${objects.join(", ")}`));
+    process.stderr.write(this.format(component, "WARNING", false, objects.join(", ")).concat("\n"));
   }
 
   error(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this.format(component, "ERROR", false, chalk.redBright(objects.join(", "))));
+    process.stderr.write(this.format(component, "ERROR", false, chalk.redBright(objects.join(", "))).concat("\n"));
   }
 
   debug(component?: string, ...objects: unknown[]) {
     if (!this._config.verbose) {
       return;
     }
-    process.stderr.write(this.format(component, "DEBUG", false, objects.join(", ")));
+    process.stderr.write(this.format(component, "DEBUG", false, objects.join(", ")).concat("\n"));
   }
 
   jsonDump(level: "DEBUG" | "INFO", component: string | undefined, object: unknown) {
     if (!this._config.verbose) {
       return;
     }
-    (level === "INFO" ? process.stdout : process.stderr).write(this.format(component, level, false, JSON.stringify(object)));
+    (level === "INFO" ? process.stdout : process.stderr).write(this.format(component, level, false, JSON.stringify(object)).concat("\n"));
   }
 
   format(component: string | undefined, level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
@@ -63,8 +63,8 @@ export class Logger {
     const componentString = chalk.blue(!!component ? component : this._baseComponent);
     const color = this._color(level);
     return input
-      ? format("[%s] %s (%s): \n", componentString, color(level), text)
-      : format("[%s] %s (%s): %s \n", dateString, componentString, color(level), text);
+      ? format("[%s] %s (%s): ", componentString, color(level), text)
+      : format("[%s] %s (%s): %s ", dateString, componentString, color(level), text);
   }
 
   private _color(level: "DEBUG" | "INFO" | "WARNING" | "ERROR"): typeof chalk.red {

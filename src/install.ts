@@ -10,7 +10,7 @@ import path from "path";
 import ProgressBar from "progress";
 import tar from "tar-stream";
 import { URL } from "url";
-import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
+import { detectPlatform, Platform, Product } from "./binaryExecutor.js";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-01-09-git-13d04e30d7";

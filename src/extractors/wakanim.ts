@@ -1,5 +1,4 @@
 import cookie from "cookie";
-import { randomUUID } from "crypto";
 import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
@@ -211,7 +210,9 @@ export default class WakanimService extends Extractor {
       }
     });
     const manifest = await response.text();
-    writeFileSync(randomUUID() + ".xml", manifest);
+    if (this._config.verbose) {
+      writeFileSync(`wakanim-manifest-${uuidv4()}.xml`, manifest);
+    }
     return manifest;
   }
 

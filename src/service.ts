@@ -25,12 +25,26 @@ export abstract class Downloader {
   }
 }
 
+export abstract class PostProcessor {
+  abstract process(download: Output | Output[]): Promise<void>;
+  abstract get name(): string;
+  abstract get version(): string;
+}
+
 export function isContainerDownload(download: Download): download is ContainerDownload {
   return download.type === "container";
 }
 
 export function isContainerMetadata(metadata: Metadata): metadata is ContainerMetadata {
   return metadata.type === "container";
+}
+
+export interface Output {
+  title: string;
+  container: string | null;
+  season: number | null;
+  index: number | null;
+  files: string[];
 }
 
 export type Download = ContainerDownload | EpisodeDownload;
@@ -49,6 +63,7 @@ export interface ContainerDownload extends DownloadBase {
 export interface EpisodeDownload extends DownloadBase {
   type: "episode";
   season?: number | null;
+  index?: number | null;
   files: DownloadedFile[];
   metadata: EpisodeMetadata;
 }
@@ -83,6 +98,7 @@ export interface ContainerMetadata extends MetadataBase {
 export interface EpisodeMetadata extends MetadataBase {
   type: "episode";
   season?: number | null;
+  index?: number | null;
 }
 
 export type DataType = "container" | "episode";

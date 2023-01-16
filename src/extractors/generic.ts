@@ -3,10 +3,10 @@ import { Extractor, Metadata } from "../service.js";
 export default class GenericExtractor extends Extractor {
   initialize = undefined;
   release = undefined;
-  checkResponsibility(url: string): boolean {
+  checkResponsibility(): boolean {
     return true;
   }
-  fetchMetadata(url: string): Promise<Metadata | null> {
+  fetchMetadata(): Promise<Metadata | null> {
     throw new Error("Method not implemented.");
   }
   get name(): string {

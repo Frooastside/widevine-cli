@@ -8,6 +8,7 @@ import RecaptchaPlugin from "puppeteer-extra-plugin-recaptcha";
 import { CaptchaInfo } from "puppeteer-extra-plugin-recaptcha/dist/types";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { URL } from "url";
+import { v4 as uuidv4 } from "uuid";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
 import DrmSolver, { LicenseInformation } from "./drm.js";
@@ -15,7 +16,19 @@ import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
-import { Download, Downloader, EpisodeDownload, Extractor, isContainerDownload } from "./service.js";
+import GenericPostProcessor from "./post-processors/generic.js";
+import Jellyfin from "./post-processors/jellyfin.js";
+import {
+  ContainerDownload,
+  Download,
+  Downloader,
+  EpisodeDownload,
+  Extractor,
+  isContainerDownload,
+  Metadata,
+  Output,
+  PostProcessor
+} from "./service.js";
 
 export default class App {
   private _config: Config;
@@ -28,6 +41,9 @@ export default class App {
 
   private _downloaders: Downloader[];
   private _genericDownloader: Downloader;
+
+  private _postProcessors: PostProcessor[];
+  private _genericPostProcessor: PostProcessor;
 
   constructor(config: Config) {
     this._config = config;
@@ -59,18 +75,13 @@ export default class App {
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config, this._logger);
+    this._postProcessors = [new Jellyfin(config, this._logger)];
+    this._genericPostProcessor = new GenericPostProcessor();
   }
 
   async start() {
     if (this._config.interactive) {
-      const response = await enquirer.prompt({
-        type: "input",
-        message: "Download URL: ",
-        name: "Download",
-
-        validate: (value) => this._validateUrl(value)
-      });
-      console.log(response);
+      throw new Error("not yet implemented");
     } else {
       const inputs = this._config.input;
       if (!inputs?.length) {
@@ -80,76 +91,254 @@ export default class App {
       }
       for (const input of inputs) {
         try {
-          const url = new URL(input);
-          let responsibleExtractor = this._extractors.find((extractor) => extractor.checkResponsibility(url.href));
-          if (!responsibleExtractor) {
-            this._logger.information(undefined, "there was no matching provider, using the generic one.");
-            responsibleExtractor = this._genericExtractor;
-          }
-          if (!responsibleExtractor.ready) {
-            if (!responsibleExtractor.initialize) {
-              throw new Error("has to be ready if there is not initializer");
-            }
-            await responsibleExtractor.initialize();
-          }
-          try {
-            if (!responsibleExtractor.ready) {
-              throw new Error("still not ready after initialization");
-            }
-            const metadata = await responsibleExtractor.fetchMetadata(url.href);
-            if (!metadata) {
-              this._handleError(undefined, "an error occurred while fetching the metadata");
-              continue;
-            }
-            this._logger.information(responsibleExtractor.name, "extracted metadata");
-            this._logger.jsonDump("INFO", responsibleExtractor.name, metadata);
-            let responsibleDownloader = this._downloaders.find((extractor) => extractor.checkResponsibility(url.href));
-            if (!responsibleDownloader) {
-              this._logger.information(undefined, "there was no matching provider, using the generic one.");
-              responsibleDownloader = this._genericDownloader;
-            }
-            if (!responsibleDownloader.ready) {
-              if (!responsibleDownloader.initialize) {
-                throw new Error("has to be ready if there is not initializer");
-              }
-              await responsibleDownloader.initialize();
-            }
-            try {
-              if (!responsibleDownloader.ready) {
-                throw new Error("still not ready after initialization");
-              }
-              const download = await this._genericDownloader.download(metadata);
-              if (!download) {
-                this._handleError(undefined, "an error occurred while downloading");
-                continue;
-              }
-              this._logger.information(responsibleDownloader.name, "downloaded file(s)");
-              this._logger.jsonDump("INFO", responsibleDownloader.name, download);
-              const drmFound = !!(
-                isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
-              ).filter((file) => file.encrypted).length;
-              console.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
-              if (drmFound && !this._config.skipDrm) {
-                /*const keys = [...new Set(Object.keys(psshData).flatMap((formatId) => psshData[formatId].toString("base64")))].map((pssh) =>
-                  Buffer.from(pssh, "base64")
-                );*/
-                if (!this._decryptFiles(download)) {
-                  continue;
-                }
-              }
-            } catch (error) {
-              this._logger.debug(responsibleDownloader.name, error, (<Error>error)?.stack);
-              this._handleError(responsibleDownloader.name, error);
-            }
-          } catch (error) {
-            this._logger.debug(responsibleExtractor.name, error, (<Error>error)?.stack);
-            this._handleError(responsibleExtractor.name, error);
-          }
+          await this._handleInput(input);
         } catch (error) {
           this._logger.debug(undefined, error, (<Error>error)?.stack);
           this._handleError(undefined, error);
         }
       }
+    }
+  }
+
+  private async _handleInput(input: string) {
+    const url = new URL(input);
+    const metadata: Metadata | undefined = await this._extract(url.href);
+    if (!metadata) {
+      return;
+    }
+    const download: Download | undefined = await this._download(metadata);
+    if (!download) {
+      return;
+    }
+    const drmFound = !!(
+      isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
+    ).filter((file) => file.encrypted).length;
+    console.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
+    if (drmFound && !this._config.skipDrm) {
+      if (!(await this._decryptFiles(download))) {
+        return;
+      }
+    }
+    const output = await this._handleMissingInformation(download);
+    const postProcessors = this._postProcessors.filter((postProcessor) =>
+      Array.isArray(this._config.postProcessor)
+        ? !!this._config.postProcessor.find((input) => input.toLowerCase() === postProcessor.name.toLowerCase())
+        : false
+    );
+    if (!postProcessors.length) {
+      postProcessors.push(this._genericPostProcessor);
+    }
+    for (const postProcessor of postProcessors) {
+      if (!postProcessor) {
+        continue;
+      }
+      try {
+        await postProcessor.process(output);
+      } catch (error) {
+        this._logger.debug(postProcessor.name, error, (<Error>error)?.stack);
+        this._handleError(postProcessor.name, error);
+        continue;
+      }
+    }
+  }
+
+  private async _handleMissingInformation(input: Download): Promise<Output | Output[]> {
+    if (isContainerDownload(input)) {
+      let container = await this._title(input.title, true);
+      if (!container) {
+        container = uuidv4();
+        this._logger.warn(
+          undefined,
+          `you specified to skip questions but no title was found, using "${container}" for now`,
+          input.metadata.source.url
+        );
+      }
+      const outputs: Output[] = [];
+      for (const episode of input.contents ?? <EpisodeDownload[]>[]) {
+        let title = await this._title(episode.title, false);
+        if (!title) {
+          title = uuidv4();
+          this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
+        }
+        const index = await this._index(episode, input);
+        const season = await this._season(episode, input);
+        const episodeOutput: Output = {
+          files: episode.files
+            .filter((file) => {
+              if (file.encrypted) {
+                this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+                return false;
+              } else {
+                return true;
+              }
+            })
+            .map((file) => file.path),
+          title: title,
+          index: index,
+          season: season,
+          container: container
+        };
+        outputs.push(episodeOutput);
+      }
+
+      return outputs;
+    } else {
+      const container = input.season === null || input.index === null ? null : (await this._title(undefined, true)) || null;
+      let title = await this._title(input.title, false);
+      if (!title) {
+        title = uuidv4();
+        this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
+      }
+      const index = await this._index(input);
+      const season = await this._season(input);
+      const output: Output = {
+        files: input.files
+          .filter((file) => {
+            if (file.encrypted) {
+              this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+              return false;
+            } else {
+              return true;
+            }
+          })
+          .map((file) => file.path),
+        title: title,
+        index: index,
+        season: season,
+        container: container
+      };
+      return output;
+    }
+  }
+
+  private async _title(initial: string | undefined, container: boolean): Promise<string | null> {
+    let title: string | undefined = initial;
+    if (!title) {
+      if (this._config.skipQuestions) {
+        return null;
+      } else {
+        const response = await enquirer.prompt<{ title: string }>({
+          type: "input",
+          message: this._logger.format(undefined, "INFO", true, container ? "Container Title" : "Episode Title"),
+          name: "title",
+          validate: (value) => !!value
+        });
+        title = response.title;
+      }
+    }
+    return title;
+  }
+
+  private async _index(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
+    let index: number | undefined | null = input.index;
+    if (index === undefined) {
+      if (this._config.skipQuestions) {
+        index = !!container ? 0 : null;
+        this._logger.warn(
+          undefined,
+          `you specified to skip questions but no episode index was found, using "${index}" for now`,
+          input.metadata.source.url
+        );
+      } else {
+        const response = await enquirer.prompt<{ index: string }>({
+          type: "input",
+          message: this._logger.format(undefined, "INFO", true, "Episode Index (empty if there's only 1)"),
+          name: "index",
+          validate: (value: string) => !value || !isNaN(parseFloat(value))
+        });
+        index = !response.index ? null : Number(response.index);
+        input.index = index;
+      }
+    }
+    return index;
+  }
+
+  private async _season(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
+    let season: number | undefined | null = input.season;
+    if (season === undefined) {
+      if (this._config.skipQuestions) {
+        season = !!container ? 1 : null;
+        this._logger.warn(
+          undefined,
+          `you specified to skip questions but no we dont not in which season this episode is, using "${season}" for now`,
+          input.metadata.source.url
+        );
+      } else {
+        const response = await enquirer.prompt<{ season: string }>({
+          type: "input",
+          message: this._logger.format(undefined, "INFO", true, "Season (empty if not in a container)"),
+          name: "season",
+          validate: (value: string) => !value || !isNaN(parseFloat(value))
+        });
+        season = !response.season ? null : Number(response.season);
+        input.season = season;
+      }
+    }
+    return season;
+  }
+
+  private async _extract(url: string): Promise<Metadata | undefined> {
+    let responsibleExtractor = this._extractors.find((extractor) => extractor.checkResponsibility(url));
+    if (!responsibleExtractor) {
+      this._logger.debug(undefined, "there was no matching provider, using the generic one.");
+      responsibleExtractor = this._genericExtractor;
+    }
+    if (!responsibleExtractor.ready) {
+      if (!responsibleExtractor.initialize) {
+        throw new Error("has to be ready if there is not initializer");
+      }
+      await responsibleExtractor.initialize();
+    }
+    let metadata: Metadata | null;
+    try {
+      if (!responsibleExtractor.ready) {
+        throw new Error("still not ready after initialization");
+      }
+      metadata = await responsibleExtractor.fetchMetadata(url);
+      if (!metadata) {
+        this._handleError(undefined, "an error occurred while fetching the metadata");
+        return;
+      }
+      this._logger.information(responsibleExtractor.name, "extracted metadata");
+      this._logger.jsonDump("DEBUG", responsibleExtractor.name, metadata);
+      return metadata;
+    } catch (error) {
+      this._logger.debug(responsibleExtractor.name, error, (<Error>error)?.stack);
+      this._handleError(responsibleExtractor.name, error);
+      return;
+    }
+  }
+
+  private async _download(metadata: Metadata): Promise<Download | undefined> {
+    let responsibleDownloader = this._downloaders.find((extractor) =>
+      extractor.checkResponsibility(metadata.source.manifest?.url ?? metadata.source.url)
+    );
+    if (!responsibleDownloader) {
+      this._logger.debug(undefined, "there was no matching download provider, using the generic one.");
+      responsibleDownloader = this._genericDownloader;
+    }
+    if (!responsibleDownloader.ready) {
+      if (!responsibleDownloader.initialize) {
+        throw new Error("has to be ready if there is not initializer");
+      }
+      await responsibleDownloader.initialize();
+    }
+    try {
+      if (!responsibleDownloader.ready) {
+        throw new Error("still not ready after initialization");
+      }
+      const download = await this._genericDownloader.download(metadata);
+      if (!download) {
+        this._handleError(undefined, "an error occurred while downloading");
+        return;
+      }
+      this._logger.information(responsibleDownloader.name, "downloaded file(s)");
+      this._logger.jsonDump("DEBUG", responsibleDownloader.name, download);
+      return download;
+    } catch (error) {
+      this._logger.debug(responsibleDownloader.name, error, (<Error>error)?.stack);
+      this._handleError(responsibleDownloader.name, error);
+      return;
     }
   }
 
@@ -213,7 +402,7 @@ export default class App {
       }
       this._logger.debug(undefined, `try to decrypt "${file.path}"`);
       this._drm.decrpytFile(file, keyContainers);
-      this._logger.debug(undefined, `try to decrypt "${file.path}"`);
+      this._logger.debug(undefined, `decrypted "${file.path}"`);
     }
     return true;
   }

@@ -75,7 +75,7 @@ export default class YT_DLP_Downloader extends Downloader {
       throw new Error("Episodes can't be playlists at the same time");
     }
 
-    this._logger.information("yt-dlp", `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
+    this._logger.information(this.name, `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
 
     const files: DownloadedFile[] = [];
     for (const format of fetchedDownloadMetadata.requested_formats) {
@@ -154,10 +154,10 @@ export default class YT_DLP_Downloader extends Downloader {
   private _createProgressBar(format: Format) {
     return new ProgressBar(
       this._logger.format(
-        "yt-dlp",
+        this.name,
         "INFO",
         false,
-        `Downloading "${format.format_id}.${format.ext}" :elapseds [:bar] ${chalk.blue(":percent")} :progress/:sizeMiB ETA: ${chalk.yellow(":eta")}s`
+        `Downloading "${format.format_id}.${format.ext}" :elapseds [:bar] ${chalk.blue(":percent")} :progress/:sizeMiB ETA: ${chalk.yellow(":etas")}`
       ),
       {
         total: 0,

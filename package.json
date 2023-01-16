@@ -24,7 +24,7 @@
   "bin": {},
   "type": "module",
   "scripts": {
-    "start": "node -r source-map-support/register dist/index.js -N 16 --verbose --visual -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7512/-dakaichi-my-number-1-omu-staffel-1-folge-13-omu\"",
+    "start": "node -r source-map-support/register dist/index.js -N 16 --post-processor jellyfin --verbose --visual -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7512/-dakaichi-my-number-1-omu-staffel-1-folge-13-omu\"",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node --trace-uncaught -r source-map-support/register dist/tests.js\"",
     "test": "pnpm build && ts-mocha test/**/*.spec.ts",
