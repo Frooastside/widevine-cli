@@ -3,6 +3,7 @@ import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
 import fetch from "node-fetch";
+import { exit } from "process";
 import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
@@ -11,7 +12,7 @@ import { extractPsshData } from "../drm.js";
 import { extractObject } from "../extractor.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
-import { EpisodeMetadata, Extractor, Metadata } from "../service.js";
+import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 
 export default class WakanimService extends Extractor {
   private _config: Config;
@@ -93,8 +94,66 @@ export default class WakanimService extends Extractor {
       ) /* https://regex101.com/r/2T6ZsI/1 */
     ) {
       return await this._fetchEpisodeMetadata(url);
+    } else if (
+      /^(https?:)\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/(show)\/[0-9]+\/[\-a-zA-Z0-9]+\/?(season\/[0-9]+\/[\-a-zA-Z0-9]+)\/?/gi.test(
+        url
+      ) /* https://regex101.com/r/PHufNF/1 */
+    ) {
+      return await this._fetchSeasonMetadata(url);
     } else {
-      throw new Error("whole seasons / containers are not supported yet");
+      throw new Error("whole containers are not supported yet");
+    }
+  }
+
+  private async _fetchSeasonMetadata(url: string): Promise<ContainerMetadata | null> {
+    const pages: Page[] = [];
+    try {
+      const page = await this._setupPage(url, pages);
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".serie .container meta[itemprop=\"name\"]"))?.content);
+      const episodes = await page.evaluate(() =>
+        [...document.querySelectorAll("#container-sub .list-episodes .list-episodes-container>li>div>a")].map(
+          (episode) => (<HTMLLinkElement>episode)?.href
+        )
+      );
+      if (!episodes) {
+        throw new Error("an error occurred while extracting the episodes");
+      }
+      const episodeMetadataList: EpisodeMetadata[] = [];
+      for (const url of episodes) {
+        try {
+          const episodeMetadata = await this._fetchEpisodeMetadata(url);
+          if (!episodeMetadata) {
+            throw new Error(`got empty episode metadata from "${url}"`);
+          }
+          episodeMetadataList.push(episodeMetadata);
+        } catch (error) {
+          this._logger.debug(this.name, error, (<Error>error)?.stack);
+          this._logger.error(this.name, error);
+          if (this._config.ignoreErrors) {
+            continue;
+          } else {
+            exit(1);
+          }
+        }
+      }
+      if (!episodeMetadataList.length) {
+        throw new Error("could not fetch the metadata of any episode");
+      }
+      const containerMetadata: ContainerMetadata = {
+        type: "container",
+        source: {
+          url: url
+        },
+        contents: episodeMetadataList,
+        title: title
+      };
+      return containerMetadata;
+    } catch (error) {
+      this._logger.debug(this.name, error, (<Error>error)?.stack);
+      this._logger.error(this.name, error);
+      return null;
+    } finally {
+      pages.forEach((page) => (!page.isClosed() ? page.close() : null));
     }
   }
 
@@ -177,6 +236,7 @@ export default class WakanimService extends Extractor {
     pages.push(page);
     page.on("popup", (page) => (page ? pages.push(page) : null));
     await page.setCookie(...cookieJar);
+    this._logger.debug(this.name, `visiting "${url}"`);
     await page.goto(url, {
       waitUntil: "networkidle0",
       timeout: 20000
@@ -188,6 +248,10 @@ export default class WakanimService extends Extractor {
       await page.solveRecaptchas();
       await delay(2000);
       await page.waitForSelector("#main-iframe, #breakpoints");
+    }
+    this._logger.debug(this.name, `finished loading "${url}"`);
+    if (this._config.verbose) {
+      writeFileSync(`wakanim-page-${uuidv4()}.html`, await page.content());
     }
     return page;
   }

@@ -105,7 +105,7 @@ export type DataType = "container" | "episode";
 export type Source = {
   url: string;
   manifest?: Manifest;
-  licenseInformation: LicenseInformation;
+  licenseInformation?: LicenseInformation;
 };
 
 export type Manifest = {

@@ -13,7 +13,7 @@ import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
-import DrmSolver, { LicenseInformation } from "./drm.js";
+import DrmSolver from "./drm.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
@@ -369,33 +369,32 @@ export default class App {
   }
 
   private async _decryptFiles(download: Download): Promise<boolean> {
-    const licenseInformation = download.metadata.source.licenseInformation;
-    const psshData = licenseInformation.psshData;
-    if (!psshData) {
-      this._handleError(undefined, "DRM protected content was downloaded but no key identifiers were found");
-      return false;
-    }
     const cache: Record<string, KeyContainer[]> = {};
     if (isContainerDownload(download)) {
       for (const episode of download.contents ?? <EpisodeDownload[]>[]) {
-        if (!(await this._decryptEpisode(episode, licenseInformation, psshData, cache))) {
+        if (!(await this._decryptEpisode(episode, cache))) {
           return false;
         }
       }
     } else {
-      if (!(await this._decryptEpisode(download, licenseInformation, psshData, cache))) {
+      if (!(await this._decryptEpisode(download, cache))) {
         return false;
       }
     }
     return true;
   }
 
-  private async _decryptEpisode(
-    episode: EpisodeDownload,
-    licenseInformation: LicenseInformation,
-    psshData: Record<string, Buffer>,
-    cache: Record<string, KeyContainer[]>
-  ): Promise<boolean> {
+  private async _decryptEpisode(episode: EpisodeDownload, cache: Record<string, KeyContainer[]>): Promise<boolean> {
+    const licenseInformation = episode.metadata.source.licenseInformation;
+    if (!licenseInformation) {
+      this._handleError(undefined, "DRM protected content was downloaded but there is no license information");
+      return false;
+    }
+    const psshData = licenseInformation.psshData;
+    if (!psshData) {
+      this._handleError(undefined, "DRM protected content was downloaded but no key identifiers were found");
+      return false;
+    }
     for (const file of episode.files.filter((file) => file.encrypted)) {
       const pssh = psshData[file.format.id];
       if (!pssh) {
