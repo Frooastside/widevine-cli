@@ -17,6 +17,7 @@ import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
 import GenericPostProcessor from "./post-processors/generic.js";
+import { existsSync, mkdir as rawMkdir, rename as rawRename, rm as rawRm, statSync } from "fs";
 import Jellyfin from "./post-processors/jellyfin.js";
 import {
   ContainerDownload,
@@ -29,6 +30,9 @@ import {
   Output,
   PostProcessor
 } from "./service.js";
+import { promisify } from "util";
+
+const rm = promisify(rawRm);
 
 export default class App {
   private _config: Config;
@@ -138,6 +142,24 @@ export default class App {
         this._logger.debug(postProcessor.name, error, (<Error>error)?.stack);
         this._handleError(postProcessor.name, error);
         continue;
+      }
+    }
+    try {
+      await this._removeTemporaryFiles(download);
+    } catch (error) {
+      this._logger.warn(undefined, "an error occurred while deleting temporary files");
+    }
+  }
+  private async _removeTemporaryFiles(download: Download) {
+    if (isContainerDownload(download)) {
+      for (const episode of download.contents ?? <EpisodeDownload[]>[]) {
+        for (const file of episode.files) {
+          await rm(file.path);
+        }
+      }
+    } else {
+      for (const file of download.files) {
+        await rm(file.path);
       }
     }
   }
@@ -299,7 +321,7 @@ export default class App {
         this._handleError(undefined, "an error occurred while fetching the metadata");
         return;
       }
-      this._logger.information(responsibleExtractor.name, "extracted metadata");
+      this._logger.information(responsibleExtractor.name, "sucessfully extracted metadata");
       this._logger.jsonDump("DEBUG", responsibleExtractor.name, metadata);
       return metadata;
     } catch (error) {
@@ -332,7 +354,7 @@ export default class App {
         this._handleError(undefined, "an error occurred while downloading");
         return;
       }
-      this._logger.information(responsibleDownloader.name, "downloaded file(s)");
+      this._logger.information(responsibleDownloader.name, "downloads finished");
       this._logger.jsonDump("DEBUG", responsibleDownloader.name, download);
       return download;
     } catch (error) {
@@ -402,7 +424,7 @@ export default class App {
       }
       this._logger.debug(undefined, `try to decrypt "${file.path}"`);
       this._drm.decrpytFile(file, keyContainers);
-      this._logger.debug(undefined, `decrypted "${file.path}"`);
+      this._logger.information(undefined, `decrypted "${file.path}"`);
     }
     return true;
   }

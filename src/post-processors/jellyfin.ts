@@ -82,7 +82,9 @@ export default class Jellyfin extends PostProcessor {
     this._logger.debug(this.name, `merging all provided formats into ${path}`);
     if (existsSync(path)) {
       this._logger.debug(this.name, `${path} already exist, trying to merge with old file`);
-      const oldFile = `_${path}`;
+      const oldFile = `${seasonPath}_${output.title} ${
+        output.season ? (`${output.season}`.length < 10 ? `S0${output.season}` : `S${output.season}`) : ""
+      }${output.index ? (`${output.index}`.length < 10 ? `E0${output.index}` : `E${output.index}`) : ""}.mkv`;
       await rename(path, oldFile);
       await this._ffmpeg.combineFiles(output.files.concat(oldFile), path);
       this._logger.debug(this.name, "merged all formats, removing old file");

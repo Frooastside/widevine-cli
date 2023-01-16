@@ -19,7 +19,7 @@ export default class FFMPEG {
   }
 
   async combineFiles(files: string[], output: string) {
-    const args: ExecutionArguments = [files.map((path) => ["-i", path]).flat(), ["-c:v", "copy"], ["-c:a", "copy"], `"${output}"`];
+    const args: ExecutionArguments = [files.map((path) => ["-i", `"${path}"`]).flat(), ["-c:v", "copy"], ["-c:a", "copy"], `"${output}"`];
     const child = await binaryExecutor.spawn(args);
     let errorOutput = "\n";
     child.stderr?.on("data", (data) => (errorOutput = errorOutput + data));

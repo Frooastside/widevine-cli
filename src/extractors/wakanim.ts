@@ -128,7 +128,7 @@ export default class WakanimService extends Extractor {
       const licenseInformation: LicenseInformation = {
         url: metadata.drm.widevine.url,
         headers: {
-          "user-agent": await this._browser.userAgent(),
+          "user-agent": (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome"),
           authorization: metadata.drm.widevine.headers[0].value,
           userid: metadata.drm.widevine.headers[1].value,
           d1: metadata.drm.widevine.headers[2].value,
@@ -203,9 +203,10 @@ export default class WakanimService extends Extractor {
       )
       .map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value))
       .join("; ");
+    this._logger.debug(this.name, "fetching manifest");
     const response = await fetch(url, {
       headers: {
-        "user-agent": await this._browser.userAgent(),
+        "user-agent": (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome"),
         cookie: cookieHeader
       }
     });
