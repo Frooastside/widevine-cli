@@ -61,7 +61,7 @@ export default class WakanimService extends Extractor {
         typeof this._config.chromeChannel === "string"
           ? (this._config.chromeChannel as "chrome" | "chrome-beta" | "chrome-dev" | "chrome-canary")
           : "chrome",
-      args: [`--window-size=${840},${560}`]
+      args: [`--window-size=${840},${560}`, ...(this._config.chromeUnsecure ? ["--no-sandbox"] : [])]
     });
     this._userAgent = (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome");
   }

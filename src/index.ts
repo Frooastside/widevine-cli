@@ -30,6 +30,7 @@ const program = new Command()
   .addOption(new Option("-p --post-processor [post-processors...]"))
   .addOption(new Option("   --jellyfin-root [path]").default("."))
   .addOption(new Option("   --chrome-channel [channel]").choices(["chrome", "chrome-beta", "chrome-dev", "chrome-canary"]).default("chrome"))
+  .addOption(new Option("   --chrome-unsecure"))
   .addOption(new Option("-N --concurrent-fragments [threads]").default(1).argParser((string) => Number(string ?? "1")));
 
 program.parse(process.argv);
