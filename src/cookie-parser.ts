@@ -24,7 +24,6 @@ export function initializeCookieStore(config: Config) {
 
 export function readCookieJar() {
   if (existsSync("security/cookies.json")) {
-    console.log("cookie json file exists");
     addCookies(JSON.parse(readFileSync("security/cookies.json", "utf8")));
   }
 }
