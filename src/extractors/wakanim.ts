@@ -1,10 +1,8 @@
-import cookie from "cookie";
 import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
-import fetch from "node-fetch";
 import { exit } from "process";
-import { Browser, Page, Protocol } from "puppeteer";
+import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
 import { addCookies, cookieJar, writeCookieJar } from "../cookie-parser.js";
@@ -177,8 +175,7 @@ export default class WakanimService extends Extractor {
       if (embeddedMetadata === null) {
         throw new Error("Embedded Metadata was not found! Make sure you're logged in");
       }
-      await this._saveCookies(page);
-      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file);
+      const manifest = await this._fetchWakanimManifest(page, embeddedMetadata.file);
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
@@ -298,19 +295,22 @@ export default class WakanimService extends Extractor {
     return null;
   }
 
-  private async _fetchWakanimManifest(url: string): Promise<string | null> {
+  private async _fetchWakanimManifest(page: Page, url: string): Promise<string | null> {
     if (!this._browser) {
       throw new Error("Not initialized!");
     }
-    const cookieHeader = cookieJar.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ");
+    const requestAllowed = await page.evaluate(
+      async (url) => (await fetch(url, { body: undefined, credentials: undefined, headers: {}, method: "HEAD" })).ok,
+      url
+    );
+    if (!requestAllowed) {
+      throw new Error("manifest request will be denied");
+    }
     this._logger.debug(this.name, "fetching manifest");
-    const response = await fetch(url, {
-      headers: {
-        "user-agent": this._userAgent,
-        cookie: cookieHeader
-      }
-    });
-    const manifest = await response.text();
+    const manifest = await page.evaluate(
+      async (url) => await (await fetch(url, { body: undefined, credentials: undefined, headers: {}, method: "GET" })).text(),
+      url
+    );
     if (this._config.verbose) {
       writeFileSync(`wakanim-manifest-${uuidv4()}.xml`, manifest);
     }
