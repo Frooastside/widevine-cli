@@ -82,6 +82,7 @@
     "enquirer": "^2.3.6",
     "extract-zip": "^2.0.1",
     "fast-xml-parser": "^4.0.13",
+    "filenamify": "^5.1.1",
     "holz-provider": "^0.3.1",
     "https-proxy-agent": "^5.0.1",
     "koa": "^2.14.1",

@@ -4,6 +4,7 @@ import FFMPEG from "../ffmpeg.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
 import { Output, PostProcessor } from "../service.js";
+import filenamify from "filenamify";
 
 const mkdir = promisify(rawMkdir);
 const rename = promisify(rawRename);
@@ -56,7 +57,8 @@ export default class Jellyfin extends PostProcessor {
       this._logger.warn(this.name, `${output.title} has no downloaded files, skipping`);
       return;
     }
-    const containerPath = `${jellyfinRoot}${output.container !== null ? `${output.container}/` : ""}`;
+    const escapedContainer = output.container ? filenamify(output.container, { maxLength: 255, replacement: "_" }) : null;
+    const containerPath = `${jellyfinRoot}${escapedContainer !== null ? `${escapedContainer}/` : ""}`;
     if (!existsSync(containerPath)) {
       this._logger.debug(this.name, `${containerPath} does not exist, creating...`);
       await mkdir(containerPath);
@@ -76,13 +78,14 @@ export default class Jellyfin extends PostProcessor {
         throw new Error(`${seasonPath} already exists but is no a directory`);
       }
     }
-    const path = `${seasonPath}${output.title} ${output.season ? (`${output.season}`.length < 10 ? `S0${output.season}` : `S${output.season}`) : ""}${
+    const escapedTitle = output.title ? filenamify(output.title, { maxLength: 255, replacement: "_" }) : null;
+    const path = `${seasonPath}${escapedTitle} ${output.season ? (`${output.season}`.length < 10 ? `S0${output.season}` : `S${output.season}`) : ""}${
       output.index ? (`${output.index}`.length < 10 ? `E0${output.index}` : `E${output.index}`) : ""
     }.mkv`;
     this._logger.debug(this.name, `merging all provided formats into ${path}`);
     if (existsSync(path)) {
       this._logger.debug(this.name, `${path} already exist, trying to merge with old file`);
-      const oldFile = `${seasonPath}_${output.title} ${
+      const oldFile = `${seasonPath}_${escapedTitle} ${
         output.season ? (`${output.season}`.length < 10 ? `S0${output.season}` : `S${output.season}`) : ""
       }${output.index ? (`${output.index}`.length < 10 ? `E0${output.index}` : `E${output.index}`) : ""}.mkv`;
       await rename(path, oldFile);
