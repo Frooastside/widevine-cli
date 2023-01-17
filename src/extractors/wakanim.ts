@@ -63,7 +63,10 @@ export default class WakanimService extends Extractor {
           : "chrome",
       args: [`--window-size=${840},${560}`, ...(this._config.chromeUnsecure ? ["--no-sandbox"] : [])]
     });
-    this._userAgent = (await this._browser.userAgent()).replaceAll("HeadlessChrome", "Chrome");
+    this._userAgent = (await this._browser.userAgent()).replace("HeadlessChrome/", "Chrome/");
+    if (this._userAgent.includes("Linux") && !this._userAgent.includes("Android")) {
+      this._userAgent = this._userAgent.replace(/\(([^)]+)\)/, "(Windows NT 10.0; Win64; x64)");
+    }
   }
 
   async release() {
@@ -252,6 +255,7 @@ export default class WakanimService extends Extractor {
       waitUntil: "networkidle0",
       timeout: 20000
     });
+    await delay(2000);
     await page.waitForSelector("#main-iframe, #breakpoints");
     await delay(3000);
     const result = await page.findRecaptchas();
