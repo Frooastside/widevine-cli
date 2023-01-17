@@ -4,7 +4,7 @@ import { Server } from "http";
 import Koa from "koa";
 import fetch from "node-fetch";
 import { exit } from "process";
-import { Browser, Page } from "puppeteer";
+import { Browser, Page, Protocol } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
 import { cookieJar } from "../cookie-parser.js";
@@ -165,7 +165,7 @@ export default class WakanimService extends Extractor {
       if (embeddedMetadata === null) {
         throw new Error("Embedded Metadata was not found! Make sure you're logged in");
       }
-      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file);
+      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file, await page.cookies());
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
@@ -279,20 +279,11 @@ export default class WakanimService extends Extractor {
     return null;
   }
 
-  private async _fetchWakanimManifest(url: string): Promise<string | null> {
+  private async _fetchWakanimManifest(url: string, cookies: Protocol.Network.Cookie[]): Promise<string | null> {
     if (!this._browser) {
       throw new Error("Not initialized!");
     }
-    const cookieHeader = cookieJar
-      .filter(
-        (cookie) =>
-          cookie.domain.toLowerCase() === "wakanim.tv" ||
-          cookie.domain.toLowerCase() === ".wakanim.tv" ||
-          cookie.domain.toLowerCase() === "www.wakanim.tv" ||
-          cookie.domain.toLowerCase() === ".www.wakanim.tv"
-      )
-      .map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value))
-      .join("; ");
+    const cookieHeader = cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ");
     this._logger.debug(this.name, "fetching manifest");
     const response = await fetch(url, {
       headers: {

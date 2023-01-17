@@ -28,7 +28,7 @@
     "target": "node18"
   },
   "scripts": {
-    "start": "pnpm start:raw -N 16 --post-processor jellyfin --visual --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
+    "start": "pnpm start:raw -N 16 --post-processor jellyfin --visual --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
     "start:raw": "node -r source-map-support/register dist/index.js",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node --trace-uncaught -r source-map-support/register dist/tests.js\"",
