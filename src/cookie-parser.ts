@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { Config } from "./index.js";
 
 export type Cookie = {
   name: string;
@@ -11,17 +12,57 @@ export type Cookie = {
 
 export const cookieJar: Cookie[] = [];
 
-export function initializeCookieStore() {
-  if (!existsSync("./cookies/")) {
+export function initializeCookieStore(config: Config) {
+  if (config.chromeLoadCookies) {
+    readCookieJar();
+    readExternalCookies();
+  } else {
+    readExternalCookies();
+    readCookieJar();
+  }
+}
+
+export function readCookieJar() {
+  if (existsSync("security/cookies.json")) {
+    console.log("cookie json file exists");
+    addCookies(JSON.parse(readFileSync("security/cookies.json", "utf8")));
+  }
+}
+
+export function writeCookieJar() {
+  if (!existsSync("security/")) {
+    mkdirSync("security/");
+  }
+  writeFileSync("security/cookies.json", JSON.stringify(cookieJar), "utf8");
+}
+
+export function addCookies(cookies: Cookie[]) {
+  const newCookieJar = cookieJar.filter(
+    (cookie) =>
+      !cookies.find(
+        (supliedCookie) =>
+          cookie.domain === supliedCookie.domain &&
+          cookie.name === supliedCookie.name &&
+          cookie.path === supliedCookie.path &&
+          cookie.secure === supliedCookie.secure
+      )
+  );
+  newCookieJar.push(...cookies);
+  cookieJar.splice(0);
+  cookieJar.push(...newCookieJar);
+}
+
+function readExternalCookies() {
+  if (!existsSync("cookies/")) {
     return;
   }
-  const cookieFiles = readdirSync("./cookies/");
+  const cookieFiles = readdirSync("cookies/");
   if (!cookieFiles || cookieFiles.length < 1) {
     return;
   }
-  cookieJar.push(
-    ...cookieFiles
-      .map((fileName) => readFileSync(`./cookies/${fileName}`, "utf8"))
+  addCookies(
+    cookieFiles
+      .map((fileName) => readFileSync(`cookies/${fileName}`, "utf8"))
       .map((fileContent) =>
         fileContent
           .split("\n")

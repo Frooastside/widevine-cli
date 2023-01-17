@@ -73,7 +73,7 @@ export default class App {
       })
     );
 
-    initializeCookieJar();
+    initializeCookieJar(config);
 
     this._extractors = [new WakanimService(config, this._logger)];
     this._genericExtractor = new GenericExtractor();

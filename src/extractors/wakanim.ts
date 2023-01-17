@@ -7,7 +7,7 @@ import { exit } from "process";
 import { Browser, Page, Protocol } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
-import { cookieJar } from "../cookie-parser.js";
+import { addCookies, cookieJar, writeCookieJar } from "../cookie-parser.js";
 import { extractPsshData } from "../drm.js";
 import { extractObject } from "../extractor.js";
 import { Config } from "../index.js";
@@ -147,6 +147,7 @@ export default class WakanimService extends Extractor {
         contents: episodeMetadataList,
         title: title
       };
+      await this._saveCookies(page);
       return containerMetadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
@@ -154,6 +155,14 @@ export default class WakanimService extends Extractor {
       return null;
     } finally {
       pages.forEach((page) => (!page.isClosed() ? page.close() : null));
+    }
+  }
+  private async _saveCookies(page: Page) {
+    const client = await page.target().createCDPSession();
+    if (client) {
+      const cookies = (await client.send("Network.getAllCookies")).cookies;
+      addCookies(cookies);
+      writeCookieJar();
     }
   }
 
@@ -218,6 +227,7 @@ export default class WakanimService extends Extractor {
           }
         }
       };
+      await this._saveCookies(page);
       return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
@@ -236,6 +246,7 @@ export default class WakanimService extends Extractor {
     pages.push(page);
     page.on("popup", (page) => (page ? pages.push(page) : null));
     await page.setCookie(...cookieJar);
+    this._logger.jsonDump("DEBUG", this.name, cookieJar);
     this._logger.debug(this.name, `visiting "${url}"`);
     await page.goto(url, {
       waitUntil: "networkidle0",
