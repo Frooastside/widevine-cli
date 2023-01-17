@@ -177,7 +177,8 @@ export default class WakanimService extends Extractor {
       if (embeddedMetadata === null) {
         throw new Error("Embedded Metadata was not found! Make sure you're logged in");
       }
-      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file, await page.cookies());
+      await this._saveCookies(page);
+      const manifest = await this._fetchWakanimManifest(embeddedMetadata.file);
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
@@ -297,11 +298,11 @@ export default class WakanimService extends Extractor {
     return null;
   }
 
-  private async _fetchWakanimManifest(url: string, cookies: Protocol.Network.Cookie[]): Promise<string | null> {
+  private async _fetchWakanimManifest(url: string): Promise<string | null> {
     if (!this._browser) {
       throw new Error("Not initialized!");
     }
-    const cookieHeader = cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ");
+    const cookieHeader = cookieJar.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ");
     this._logger.debug(this.name, "fetching manifest");
     const response = await fetch(url, {
       headers: {
