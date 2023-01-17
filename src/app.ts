@@ -117,7 +117,7 @@ export default class App {
     const drmFound = !!(
       isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
     ).filter((file) => file.encrypted).length;
-    console.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
+    this._logger.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
     if (drmFound && !this._config.skipDrm) {
       if (!(await this._decryptFiles(download))) {
         return;
