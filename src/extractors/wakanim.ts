@@ -253,16 +253,19 @@ export default class WakanimService extends Extractor {
     this._logger.debug(this.name, `visiting "${url}"`);
     await page.goto(url, {
       waitUntil: "networkidle0",
-      timeout: 20000
+      timeout: 0
     });
-    await delay(2000);
     await page.waitForSelector("#main-iframe, #breakpoints");
-    await delay(3000);
-    const result = await page.findRecaptchas();
-    if (result.captchas.length > 0) {
-      await page.solveRecaptchas();
-      await delay(2000);
+    await delay(2000);
+    const mainIframe = await page.$("#main-iframe");
+    if (mainIframe !== null) {
+      this._logger.debug(this.name, "seems like incapsula wants us to solve a captcha, be prepared.");
+      for (const frame of page.mainFrame().childFrames()) {
+        await frame.solveRecaptchas();
+      }
+      await delay(1000);
       await page.waitForSelector("#main-iframe, #breakpoints");
+      await delay(2000);
     }
     this._logger.debug(this.name, `finished loading "${url}"`);
     if (this._config.verbose) {
