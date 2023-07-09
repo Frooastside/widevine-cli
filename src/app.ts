@@ -16,7 +16,6 @@ import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
 import DrmSolver from "./drm.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
-import AniwatchService from "./extractors/aniwatch.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
 import GenericPostProcessor from "./post-processors/generic.js";
@@ -76,7 +75,7 @@ export default class App {
 
     initializeCookieJar(config);
 
-    this._extractors = [new WakanimService(config, this._logger), new AniwatchService(config, this._logger)];
+    this._extractors = [new WakanimService(config, this._logger)];
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config, this._logger);
