@@ -274,9 +274,10 @@ export default class WakanimService extends Extractor {
 
   private async _extractDrmMetadata(page: Page): Promise<WakanimDrmMetadata | null> {
     const scripts = await Promise.all(
-      (
-        await page.$$("script")
-      ).map(async (scriptHandle) => ({ handle: scriptHandle, innerHTML: await scriptHandle.evaluate((script) => script.innerHTML) }))
+      (await page.$$("script")).map(async (scriptHandle) => ({
+        handle: scriptHandle,
+        innerHTML: await scriptHandle.evaluate((script) => script.innerHTML)
+      }))
     );
     for (const script of scripts) {
       if (!script.innerHTML || !script.innerHTML.trim()) {
