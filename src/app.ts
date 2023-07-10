@@ -31,6 +31,7 @@ import {
   Output,
   PostProcessor
 } from "./service.js";
+import AniwatchService from "./extractors/aniwatch.js";
 
 const rm = promisify(rawRm);
 
@@ -75,7 +76,7 @@ export default class App {
 
     initializeCookieJar(config);
 
-    this._extractors = [new WakanimService(config, this._logger)];
+    this._extractors = [new WakanimService(config, this._logger), new AniwatchService(config, this._logger)];
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config, this._logger);
