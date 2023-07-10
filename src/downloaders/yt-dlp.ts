@@ -98,7 +98,7 @@ export default class YT_DLP_Downloader extends Downloader {
       ["--concurrent-fragments", `${typeof this._config.concurrentFragments === "boolean" ? 1 : this._config.concurrentFragments}`],
       ["--format", format.format_id],
       ["--output-na-placeholder", "0"],
-      ["--progress-template", "\"download:[download_info];%(progress.downloaded_bytes)s;%(progress.total_bytes)s\""],
+      ["--progress-template", '"download:[download_info];%(progress.downloaded_bytes)s;%(progress.total_bytes)s"'],
       ["--output", `"${fileId}.%(format_id)s.%(ext)s"`],
       `${format.manifest_url ?? format.url}`
     ];
