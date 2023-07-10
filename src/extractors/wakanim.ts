@@ -110,7 +110,7 @@ export default class WakanimService extends Extractor {
     const pages: Page[] = [];
     try {
       const page = await this._setupPage(url, pages);
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector('.serie .container meta[itemprop="name"]'))?.content);
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".serie .container meta[itemprop=\"name\"]"))?.content);
       const episodes = await page.evaluate(() =>
         [...document.querySelectorAll("#container-sub .list-episodes .list-episodes-container>li>div>a")].map(
           (episode) => (<HTMLLinkElement>episode)?.href
@@ -187,16 +187,16 @@ export default class WakanimService extends Extractor {
         throw new Error("Essential fields were missing!");
       }
       const episodeIndex = await page.evaluate(
-        () => (<{ content?: string }>document.querySelector('.episode .container meta[itemprop="episodeNumber"]'))?.content
+        () => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"episodeNumber\"]"))?.content
       );
       const seasonIndex = await page.evaluate(
         () =>
-          (<{ content?: string }>document.querySelector('.episode .container span[itemprop="partOfSeason"] meta[itemprop="seasonNumber"]'))?.content
+          (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeason\"] meta[itemprop=\"seasonNumber\"]"))?.content
       );
       const container = await page.evaluate(
-        () => (<{ content?: string }>document.querySelector('.episode .container span[itemprop="partOfSeries"] meta[itemprop="name"]'))?.content
+        () => (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeries\"] meta[itemprop=\"name\"]"))?.content
       );
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector('.episode .container meta[itemprop="name"]'))?.content);
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"name\"]"))?.content);
 
       const episodeId = uuidv4();
       if (!this._config.simulate && !this._config.onlyDrm) {

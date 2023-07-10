@@ -1,15 +1,15 @@
 const J = require("./nA.cjs");
 
 console.log(Au(4582, 2997));
-console.log(dO(897, 1725))
+console.log(dO(897, 1725));
 
 function Au(J5, J6) {
   return g(J6 - 799, J5);
 }
 
 function dO(J5, J6) {
-    return I(J5 - -866, J6);
-  }
+  return I(J5 - -866, J6);
+}
 
 function I(g, __B) {
   return J[g - 217];
@@ -24,39 +24,39 @@ function B(I, g) {
 }
 
 function g(I, B) {
-    var d = J;
-    return (
-      (g = function (D, i) {
-        D = D - 217;
-        var C = d[D];
-        console.log(C)
-        if (g.gHqYGg === undefined) {
-          var f = function (V) {
-            var X = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=";
-            var H = "",
-              x = "";
-            for (
-              var r = 0, b, E, v = 0;
-              (E = V.charAt(v++));
-              ~E && ((b = r % 4 ? b * 64 + E : E), r++ % 4) ? (H += String.fromCharCode(255 & (b >> ((-2 * r) & 6)))) : 0
-            ) {
-              E = X.indexOf(E);
-            }
-            for (var O = 0, z = H.length; O < z; O++) {
-              x += "%" + ("00" + H.charCodeAt(O).toString(16)).slice(-2);
-            }
-            return decodeURIComponent(x);
-          };
-          (g.TypUhd = f), (I = arguments), (g.gHqYGg = true);
-        }
-        var t = d[0],
-          N = D + t,
-          u = I[N];
-        return !u ? ((C = g.TypUhd(C)), (I[N] = C)) : (C = u), C;
-      }),
-      g(I, B)
-    );
-  }
+  var d = J;
+  return (
+    (g = function (D, i) {
+      D = D - 217;
+      var C = d[D];
+      console.log(C);
+      if (g.gHqYGg === undefined) {
+        var f = function (V) {
+          var X = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=";
+          var H = "",
+            x = "";
+          for (
+            var r = 0, b, E, v = 0;
+            (E = V.charAt(v++));
+            ~E && ((b = r % 4 ? b * 64 + E : E), r++ % 4) ? (H += String.fromCharCode(255 & (b >> ((-2 * r) & 6)))) : 0
+          ) {
+            E = X.indexOf(E);
+          }
+          for (var O = 0, z = H.length; O < z; O++) {
+            x += "%" + ("00" + H.charCodeAt(O).toString(16)).slice(-2);
+          }
+          return decodeURIComponent(x);
+        };
+        (g.TypUhd = f), (I = arguments), (g.gHqYGg = true);
+      }
+      var t = d[0],
+        N = D + t,
+        u = I[N];
+      return !u ? ((C = g.TypUhd(C)), (I[N] = C)) : (C = u), C;
+    }),
+    g(I, B)
+  );
+}
 
 function base64UrlDecode(input) {
   const base64Chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=";
