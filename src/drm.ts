@@ -173,7 +173,9 @@ export default class DrmSolver {
 export async function extractPsshData(logger: Logger, rawManifest: string): Promise<Record<string, Buffer>> {
   const validation = XMLValidator.validate(rawManifest);
   if (validation !== true) {
-    throw new Error(validation.err.msg);
+    throw new Error(validation.err.msg, {
+      cause: `Invalid file: ${rawManifest}`
+    });
   }
   const parser = new XMLParser({
     ignoreAttributes: false,

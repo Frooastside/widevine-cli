@@ -1,15 +1,25 @@
-import { readFileSync, writeFileSync } from "fs";
-import { Server } from "http";
-import Koa from "koa";
-import { Browser, Page } from "puppeteer";
-import puppeteer from "puppeteer-extra";
-import { v4 as uuidv4, validate } from "uuid";
-import { addCookies, cookieJar, writeCookieJar } from "../cookie-parser.js";
+import { writeFileSync } from "fs";
+import { v4 as uuidv4 } from "uuid";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
-import cheerio, { load } from "cheerio";
+import { load } from "cheerio";
 import CryptoJS from "crypto-js";
+import { Deobfuscator } from "deobfuscator";
+import * as meriyah from "meriyah";
+import { walkTree } from "../extractor.js";
+import {
+  isArrowFunctionExpression,
+  isBlockStatement,
+  isCallExpression,
+  isIdentifier,
+  isLiteral,
+  isMemberExpression,
+  isReturnStatement,
+  isTryStatement,
+  isVariableDeclaration,
+  isVariableDeclarator
+} from "../expressions.js";
 
 export default class AniwatchService extends Extractor {
   private _config: Config;
@@ -53,19 +63,25 @@ export default class AniwatchService extends Extractor {
       const seasonId = regexResult[5];
       const episodeList = await this._fetchEpisodeList(seasonId);
       this._logger.jsonDump("DEBUG", this.name, episodeList);
-      const episodeMetadataList = await Promise.all(
-        episodeList.map(async (episode) => {
-          const episodeMetadata = await this._fetchEpisodeMetadata(episode.episodeId);
-          if (!episodeMetadata) {
-            return null;
-          }
-          episodeMetadata.index = episode.index;
-          episodeMetadata.title = episode.title;
-          return episodeMetadata;
-        })
-      );
+      const episodeMetadataList: EpisodeMetadata[] = [];
+      for (const episode of episodeList) {
+        const episodeMetadata = await this._fetchEpisodeMetadata(episode.episodeId);
+        if (!episodeMetadata) {
+          return null;
+        }
+        episodeMetadata.index = episode.index;
+        episodeMetadata.title = episode.title;
+        episodeMetadataList.push(episodeMetadata)
+      }
       this._logger.jsonDump("DEBUG", this.name, episodeMetadataList);
-      return null;
+      const metadata: ContainerMetadata = {
+        type: "container",
+        contents: episodeMetadataList,
+        source: {
+          url: url,
+        }
+      }
+      return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
@@ -129,9 +145,26 @@ export default class AniwatchService extends Extractor {
         throw new Error("an error occurred while fetching the source information");
       }
       const sourceInformationJson = await sourceInformationResponse.json();
+
+      if(sourceInformationJson.encrypted) {
+        const encryptionKey = await this._fetchEncryptionKey();
+        this._logger.debug(this.name, "encryption key", encryptionKey);
+        sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
+        if(sourceInformationJson.sourcesBackup) {
+          sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
+        }
+      }
+
       this._logger.jsonDump("DEBUG", this.name, sourceInformationJson);
 
-      return null;
+      const metadata: EpisodeMetadata = {
+        type: "episode",
+        source: {
+          url: (sourceInformationJson.sources[0].file as string).replace("master.m3u8", "index-f1-v1-a1.m3u8")
+        }
+      }
+
+      return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
@@ -171,6 +204,176 @@ export default class AniwatchService extends Extractor {
   private _decrypt(encryptedValue: string, key: string) {
     const valueBuffer = CryptoJS.AES.decrypt(encryptedValue, key);
     return JSON.parse(valueBuffer.toString(CryptoJS.enc.Utf8));
+  }
+
+  private async _fetchEncryptionKey() {
+    const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
+    const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
+    const time = process.uptime();
+    const script = await this._deobfuscate(obfuscatedScript);
+    this._logger.debug(this.name, "deobfuscation duration", process.uptime() - time);
+
+    const ast = meriyah.parseScript(script, {
+      webcompat: true,
+      loc: true
+    });
+    const scriptId = uuidv4();
+    const encryptFunctionName = this._exctractEncryptFunctionName(ast);
+    if (!encryptFunctionName) {
+      throw new Error("failed to extract the name of the encryption function");
+    }
+    this._logger.debug(this.name, "encrypt function name", encryptFunctionName);
+    const encryptionKey = this._extractEncryptionKey(ast, encryptFunctionName);
+    if (!encryptionKey) {
+      throw new Error("failed to extract the value of the encryption key");
+    }
+    return encryptionKey;
+  }
+
+  private _extractEncryptionKey(ast: meriyah.ESTree.Program, encryptFunctionName: string) {
+    let encryptionKey: string | null = null;
+    walkTree(ast, (node) => {
+      if (!encryptionKey && isVariableDeclaration(node)) {
+        const functionDeclarator = node.declarations.find((functionDeclarator) => {
+          if (functionDeclarator.init && isArrowFunctionExpression(functionDeclarator.init) && isBlockStatement(functionDeclarator.init.body)) {
+            const encryptionKeyBlock = functionDeclarator.init.body;
+            const decryptedValueReturnStatement = encryptionKeyBlock.body.find(
+              (statement) =>
+                isReturnStatement(statement) &&
+                statement.argument &&
+                isCallExpression(statement.argument) &&
+                isIdentifier(statement.argument.callee) &&
+                statement.argument.callee.name == encryptFunctionName
+            );
+            return decryptedValueReturnStatement;
+          }
+          return false;
+        });
+        if (
+          functionDeclarator &&
+          functionDeclarator.init &&
+          isArrowFunctionExpression(functionDeclarator.init) &&
+          isBlockStatement(functionDeclarator.init.body)
+        ) {
+          const encryptionKeyBlock = functionDeclarator.init.body;
+          const variableDeclaration = encryptionKeyBlock.body.find((statement) => {
+            if (isVariableDeclaration(statement)) {
+              const variableDeclarator = statement.declarations.find(
+                (declarator) =>
+                  declarator.init &&
+                  isCallExpression(declarator.init) &&
+                  isMemberExpression(declarator.init.callee) &&
+                  isLiteral(declarator.init.callee.object) &&
+                  isIdentifier(declarator.init.callee.property) &&
+                  declarator.init.callee.property.name === "replace" &&
+                  declarator.init.arguments.length === 2 &&
+                  isLiteral(declarator.init.arguments[0]) &&
+                  isLiteral(declarator.init.arguments[1])
+              );
+              if (variableDeclarator) {
+                return true;
+              }
+            }
+            return false;
+          });
+          if (variableDeclaration && isVariableDeclaration(variableDeclaration)) {
+            const variableDeclarator = variableDeclaration.declarations.find(
+              (declarator) =>
+                declarator.init &&
+                isCallExpression(declarator.init) &&
+                isMemberExpression(declarator.init.callee) &&
+                isLiteral(declarator.init.callee.object) &&
+                isIdentifier(declarator.init.callee.property) &&
+                declarator.init.callee.property.name === "replace" &&
+                declarator.init.arguments.length === 2 &&
+                isLiteral(declarator.init.arguments[0]) &&
+                isLiteral(declarator.init.arguments[1])
+            );
+            if (
+              variableDeclarator &&
+              variableDeclarator.init &&
+              isCallExpression(variableDeclarator.init) &&
+              isMemberExpression(variableDeclarator.init.callee) &&
+              isLiteral(variableDeclarator.init.callee.object) &&
+              typeof variableDeclarator.init.callee.object.value === "string" &&
+              isIdentifier(variableDeclarator.init.callee.property) &&
+              variableDeclarator.init.callee.property.name === "replace" &&
+              variableDeclarator.init.arguments.length === 2 &&
+              isLiteral(variableDeclarator.init.arguments[0]) &&
+              isLiteral(variableDeclarator.init.arguments[1]) &&
+              typeof variableDeclarator.init.arguments[0].value === "string" &&
+              typeof variableDeclarator.init.arguments[1].value === "string"
+            ) {
+              encryptionKey = variableDeclarator.init.callee.object.value.replace(
+                variableDeclarator.init.arguments[0].value,
+                variableDeclarator.init.arguments[1].value
+              );
+            }
+          }
+        }
+      }
+    });
+    return encryptionKey;
+  }
+
+  private _exctractEncryptFunctionName(ast: meriyah.ESTree.Program) {
+    let encryptFunctionName: null | string = null;
+    walkTree(ast, (node) => {
+      if (!encryptFunctionName && isVariableDeclaration(node)) {
+        const variableDeclarator = node.declarations.find((declarator) => {
+          if (declarator && isIdentifier(declarator.id) && declarator.init) {
+            if (isArrowFunctionExpression(declarator.init)) {
+              if (isBlockStatement(declarator.init.body)) {
+                const tryStatement = declarator.init.body.body.find((statement) => isTryStatement(statement));
+                if (tryStatement && isTryStatement(tryStatement) && isBlockStatement(tryStatement.block)) {
+                  const decryptBufferDeclaration = tryStatement.block.body.find((node) => {
+                    if (isVariableDeclaration(node)) {
+                      const decryptBufferDeclarator = node.declarations.find(
+                        (declarator) =>
+                          declarator.init &&
+                          isCallExpression(declarator.init) &&
+                          isMemberExpression(declarator.init.callee) &&
+                          isIdentifier(declarator.init.callee.property) &&
+                          declarator.init.callee.property.name === "decrypt" &&
+                          isMemberExpression(declarator.init.callee.object) &&
+                          isIdentifier(declarator.init.callee.object.property) &&
+                          declarator.init.callee.object.property.name === "AES" &&
+                          isIdentifier(declarator.init.callee.object.object) &&
+                          declarator.init.callee.object.object.name === "CryptoJS"
+                      );
+                      if (decryptBufferDeclarator) {
+                        return true;
+                      }
+                    }
+                    return false;
+                  });
+                  if (decryptBufferDeclaration) {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+          return false;
+        });
+        if (variableDeclarator && isIdentifier(variableDeclarator.id)) {
+          encryptFunctionName = variableDeclarator.id.name;
+        }
+      }
+    });
+    return encryptFunctionName;
+  }
+
+  private async _deobfuscate(obfuscatedScript: string) {
+    const deobfuscator = new Deobfuscator();
+    let script = await deobfuscator.deobfuscateSource(obfuscatedScript);
+    script = script.replaceAll(" 0 += ", " 0 + ");
+    script = script.replaceAll(" 0 = ", " 0 + ");
+    if (this._config.verbose) {
+      const scriptId = uuidv4();
+      writeFileSync(`security/megacloud-script-${scriptId}.js`, script);
+    }
+    return script;
   }
 
   get name(): string {

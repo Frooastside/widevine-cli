@@ -40,7 +40,7 @@ export function extractObject<ObjectType>(source: string, checkObject: (object: 
   return foundObject;
 }
 
-function reconstructConstants(node: ESTree.ObjectExpression | ESTree.Literal | ESTree.ArrayExpression): NativeObjects {
+export function reconstructConstants(node: ESTree.ObjectExpression | ESTree.Literal | ESTree.ArrayExpression): NativeObjects {
   if (isObjectExpression(node)) {
     const object: {
       [key: string]: NativeObjects;
@@ -68,7 +68,7 @@ function reconstructConstants(node: ESTree.ObjectExpression | ESTree.Literal | E
   }
 }
 
-function walkTree(node: ESTree.Node, callback: (node: ESTree.Node) => void): void {
+export function walkTree(node: ESTree.Node, callback: (node: ESTree.Node) => void): void {
   callback(node);
 
   const deeper = (node: ESTree.Node) => walkTree(node, callback);

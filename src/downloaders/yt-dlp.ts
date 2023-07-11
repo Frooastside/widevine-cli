@@ -14,6 +14,7 @@ import {
   isContainerMetadata,
   Metadata
 } from "../service.js";
+import { writeFileSync } from "fs";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
@@ -75,6 +76,10 @@ export default class YT_DLP_Downloader extends Downloader {
     }
 
     this._logger.information(this.name, `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
+    if(this._config.verbose) {
+      const scriptId = uuidv4();
+      writeFileSync(`security/yt-dlp-fetched-metadata-${scriptId}.js`, JSON.stringify(fetchedDownloadMetadata, null, 2));
+    }
 
     const files: DownloadedFile[] = [];
     for (const format of fetchedDownloadMetadata.requested_formats) {
