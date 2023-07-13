@@ -76,14 +76,20 @@ export default class YT_DLP_Downloader extends Downloader {
     }
 
     this._logger.information(this.name, `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
-    if(this._config.verbose) {
+    if (this._config.verbose) {
       const scriptId = uuidv4();
-      writeFileSync(`security/yt-dlp-fetched-metadata-${scriptId}.js`, JSON.stringify(fetchedDownloadMetadata, null, 2));
+      writeFileSync(`security/yt-dlp-fetched-metadata-${scriptId}.json`, JSON.stringify(fetchedDownloadMetadata, null, 2));
     }
 
     const files: DownloadedFile[] = [];
-    for (const format of fetchedDownloadMetadata.requested_formats) {
-      files.push(await this._downloadFormat(format, fileId));
+    for (const format of fetchedDownloadMetadata.requested_downloads) {
+      if (format.requested_formats) {
+        for (const formatParts of format.requested_formats) {
+          files.push(await this._downloadFormat(formatParts, fileId));
+        }
+      } else {
+        files.push(await this._downloadFormat(format, fileId));
+      }
     }
 
     const download: EpisodeDownload = {
@@ -256,7 +262,7 @@ export interface SourceMetadata extends MetadataBase {
   subtitles: Record<LanguageCodes, Subtitle>;
   automatic_captions?: Record<LanguageCodes, Subtitle>;
   requested_downloads: RequestedDownload[];
-  requested_formats: Format[];
+  requested_formats?: Format[];
   requested_subtitles: unknown | null;
 
   width: number;
@@ -413,29 +419,11 @@ export interface Fragment {
   path?: string;
 }
 
-export interface RequestedDownload {
+export interface RequestedDownload extends Format {
+  requested_formats?: Format[];
+  epoch: number;
   _filename: string;
   __write_download_archive: boolean;
-  format: string;
-  format_id: string;
-  ext: FileEXT;
-  protocol: string;
-  format_note?: string;
-  tbr: number;
-  width: number;
-  height: number;
-  resolution: string;
-  dynamic_range: DynamicRange;
-  vcodec?: string;
-  vbr: number;
-  aspect_ratio: number;
-  acodec?: string;
-  abr?: number;
-  asr?: number;
-  epoch: number;
-  requested_formats?: Format[];
-  language?: string;
-  fps?: number;
 }
 
 export interface Subtitle {

@@ -17,8 +17,7 @@ import {
   isMemberExpression,
   isReturnStatement,
   isTryStatement,
-  isVariableDeclaration,
-  isVariableDeclarator
+  isVariableDeclaration
 } from "../expressions.js";
 
 export default class AniwatchService extends Extractor {
@@ -71,16 +70,16 @@ export default class AniwatchService extends Extractor {
         }
         episodeMetadata.index = episode.index;
         episodeMetadata.title = episode.title;
-        episodeMetadataList.push(episodeMetadata)
+        episodeMetadataList.push(episodeMetadata);
       }
       this._logger.jsonDump("DEBUG", this.name, episodeMetadataList);
       const metadata: ContainerMetadata = {
         type: "container",
         contents: episodeMetadataList,
         source: {
-          url: url,
+          url: url
         }
-      }
+      };
       return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
@@ -146,11 +145,11 @@ export default class AniwatchService extends Extractor {
       }
       const sourceInformationJson = await sourceInformationResponse.json();
 
-      if(sourceInformationJson.encrypted) {
+      if (sourceInformationJson.encrypted) {
         const encryptionKey = await this._fetchEncryptionKey();
         this._logger.debug(this.name, "encryption key", encryptionKey);
         sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
-        if(sourceInformationJson.sourcesBackup) {
+        if (sourceInformationJson.sourcesBackup) {
           sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
         }
       }
@@ -160,9 +159,9 @@ export default class AniwatchService extends Extractor {
       const metadata: EpisodeMetadata = {
         type: "episode",
         source: {
-          url: (sourceInformationJson.sources[0].file as string).replace("master.m3u8", "index-f1-v1-a1.m3u8")
+          url: sourceInformationJson.sources[0].file
         }
-      }
+      };
 
       return metadata;
     } catch (error) {
@@ -217,7 +216,6 @@ export default class AniwatchService extends Extractor {
       webcompat: true,
       loc: true
     });
-    const scriptId = uuidv4();
     const encryptFunctionName = this._exctractEncryptFunctionName(ast);
     if (!encryptFunctionName) {
       throw new Error("failed to extract the name of the encryption function");
@@ -369,6 +367,8 @@ export default class AniwatchService extends Extractor {
     let script = await deobfuscator.deobfuscateSource(obfuscatedScript);
     script = script.replaceAll(" 0 += ", " 0 + ");
     script = script.replaceAll(" 0 = ", " 0 + ");
+    script = script.replaceAll("(0 += ", "(0 + ");
+    script = script.replaceAll("(0 = ", "(0 + ");
     if (this._config.verbose) {
       const scriptId = uuidv4();
       writeFileSync(`security/megacloud-script-${scriptId}.js`, script);
