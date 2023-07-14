@@ -150,11 +150,11 @@ export default class DrmSolver {
     if (!response.ok) {
       throw new Error(response.statusText);
     }
-    const responseText = (await response.json()) as any;
+    const responseText = (await response.json()) as { keys: [keyContainer: { key: string }] };
     logger.jsonDump("DEBUG", "DRM Solver", responseText);
     return responseText.keys
       .map((keyContainer: { key: string }) => keyContainer.key.split(":"))
-      .map((keyContainer: [string, string]) => ({ kid: keyContainer[0], key: keyContainer[1] }));
+      .map((keyContainer: string[]) => ({ kid: keyContainer[0], key: keyContainer[1] }));
   }
 
   async decrpytFile(file: DownloadedFile, keys: KeyContainer[]) {
@@ -173,7 +173,9 @@ export default class DrmSolver {
 export async function extractPsshData(logger: Logger, rawManifest: string): Promise<Record<string, Buffer>> {
   const validation = XMLValidator.validate(rawManifest);
   if (validation !== true) {
-    throw new Error(validation.err.msg);
+    throw new Error(validation.err.msg, {
+      cause: `Invalid file: ${rawManifest}`
+    });
   }
   const parser = new XMLParser({
     ignoreAttributes: false,

@@ -21,7 +21,7 @@ export default class WakanimService extends Extractor {
   private _koaServer: Server;
   private _koaAddress: string;
   private _manifests: Record<string, string> = {};
-  private _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36";
+  private _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
 
   constructor(config: Config, logger: Logger) {
     super();
@@ -249,6 +249,7 @@ export default class WakanimService extends Extractor {
     await page.setCookie(...cookieJar);
     this._logger.jsonDump("DEBUG", this.name, cookieJar);
     this._logger.debug(this.name, `visiting "${url}"`);
+
     await page.goto(url, {
       waitUntil: "networkidle0",
       timeout: 0
@@ -269,6 +270,7 @@ export default class WakanimService extends Extractor {
     if (this._config.verbose) {
       writeFileSync(`wakanim-page-${uuidv4()}.html`, await page.content());
     }
+
     return page;
   }
 
@@ -301,15 +303,35 @@ export default class WakanimService extends Extractor {
       throw new Error("Not initialized!");
     }
     const requestAllowed = await page.evaluate(
-      async (url) => (await fetch(url, { body: undefined, credentials: undefined, headers: {}, method: "HEAD" })).ok,
+      async (url) =>
+        (
+          await fetch(url, {
+            body: undefined,
+            credentials: "include",
+            headers: {
+              dnt: "1"
+            },
+            method: "HEAD"
+          })
+        ).ok,
       url
     );
     if (!requestAllowed) {
       throw new Error("manifest request will be denied");
     }
-    this._logger.debug(this.name, "fetching manifest");
+    this._logger.debug(this.name, "fetching manifest", url);
     const manifest = await page.evaluate(
-      async (url) => await (await fetch(url, { body: undefined, credentials: undefined, headers: {}, method: "GET" })).text(),
+      async (url) =>
+        await (
+          await fetch(url, {
+            body: undefined,
+            credentials: "include",
+            headers: {
+              dnt: "1"
+            },
+            method: "GET"
+          })
+        ).text(),
       url
     );
     if (this._config.verbose) {
