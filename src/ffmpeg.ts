@@ -28,10 +28,14 @@ export default class FFMPEG {
         if (exitCode === 0) {
           resolve();
         } else {
-          this._logger.error("ffmpeg", errorOutput);
+          this._logger.error(this.name, errorOutput);
           reject();
         }
       });
     });
+  }
+
+  get name(): string {
+    return "ffmpeg";
   }
 }

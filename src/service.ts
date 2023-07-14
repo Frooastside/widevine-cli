@@ -25,12 +25,6 @@ export abstract class Downloader {
   }
 }
 
-export abstract class PostProcessor {
-  abstract process(download: Output | Output[]): Promise<void>;
-  abstract get name(): string;
-  abstract get version(): string;
-}
-
 export function isContainerDownload(download: Download): download is ContainerDownload {
   return download.type === "container";
 }
