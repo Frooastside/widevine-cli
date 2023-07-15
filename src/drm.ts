@@ -1,6 +1,6 @@
 import cookie from "cookie";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { existsSync, readFileSync, rm as rawRm } from "fs";
+import { existsSync, readFileSync, rm as rawRm, writeFileSync } from "fs";
 import fetch from "node-fetch";
 import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
 import { promisify } from "util";
@@ -9,6 +9,7 @@ import { Cookie } from "./cookie-parser";
 import { Config } from "./index.js";
 import { Logger } from "./io.js";
 import { DownloadedFile } from "./service.js";
+import { v4 as uuidv4 } from "uuid";
 
 const rm = promisify(rawRm);
 
@@ -126,13 +127,17 @@ export default class DrmSolver {
     }
     const session = new Session(this._localContentDecryptionModule, pssh);
     const licenseRequest = session.createLicenseRequest();
+    logger.jsonDump("DEBUG", "DRM Solver", headers);
+    logger.debug("DRM Solver", "url", url, "pssh", pssh, licenseRequest, licenseRequest);
+    writeFileSync(`drm-${uuidv4()}.bin`, licenseRequest);
     const response = await fetch(url, {
       method: "POST",
       body: licenseRequest,
       headers: headers
     });
     if (!response.ok) {
-      throw new Error(response.statusText);
+      logger.error("DRM Solver", response.statusText, await response.json());
+      throw new Error(response.statusText, { cause: response.json() });
     }
     return session.parseLicense(Buffer.from(await response.arrayBuffer())).filter((key) => key.kid !== "1");
   }

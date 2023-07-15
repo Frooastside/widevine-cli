@@ -11,6 +11,7 @@ import { extractObject } from "../extractor.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
+import { URL } from "url";
 
 export default class WakanimService extends Extractor {
   private _config: Config;
@@ -22,6 +23,8 @@ export default class WakanimService extends Extractor {
   private _koaAddress: string;
   private _manifests: Record<string, string> = {};
   private _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
+  private _accessToken?: string;
+  private _premiumAccess?: boolean;
 
   constructor(config: Config, logger: Logger) {
     super();
@@ -89,10 +92,15 @@ export default class WakanimService extends Extractor {
   }
 
   async fetchMetadata(url: string): Promise<Metadata | null> {
+    if (!this._accessToken) {
+      if (!(await this._login())) {
+        throw new Error("an error occurred while trying to log in to wakanim services");
+      }
+    }
     if (
-      /^(https?:)\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/(episode)\/[0-9]+\/[\-a-zA-Z0-9]+\/?/gi.test(
+      /^https?:\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/episode\/([0-9]+)\/[\-a-zA-Z0-9]+\/?/gi.test(
         url
-      ) /* https://regex101.com/r/2T6ZsI/1 */
+      ) /* https://regex101.com/r/2T6ZsI/2 */
     ) {
       return await this._fetchEpisodeMetadata(url);
     } else if (
@@ -106,11 +114,93 @@ export default class WakanimService extends Extractor {
     }
   }
 
+  private async _login(): Promise<boolean> {
+    if (this._config.anonymous || (!this._config.credentials && !this._config.refreshToken)) {
+      throw new Error("Wakanim requires credentials with --credentials or a refresh token with --refresh-token to log in");
+    }
+    if (this._config.refreshToken) {
+      const body = `client_id=wakanim.android.test2&grant_type=refresh_token&refresh_token=${
+        this._config.refreshToken
+      }&response_type=code+id_token+token&client_secret=sypzbgkAPqTd9qrZ12oP&scope=email+openid+profile+offline_access+read&redirect_uri=wakanimandroidapp%3A%2F%2Fcallback&nonce=${uuidv4()}&state=${uuidv4()}`;
+      const loginResponse = await fetch("https://account.wakanim.tv/core/connect/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; Android SDK built for x86_64 Build/PSR1.180720.122)",
+          "X-DeviceType": "Google",
+          "X-DeviceVersion": "Android SDK built for x86_64",
+          "X-SoftwareVersion": "9 P",
+          "X-AppVersion": "7.1.0"
+        },
+        body: body
+      });
+      if (!loginResponse.ok) {
+        throw new Error("an error occurred while trying to log in", {cause: loginResponse.statusText});
+      }
+      const loginInformation = await loginResponse.json();
+      this._accessToken = loginInformation.access_token;
+      if (this._config.verbose) {
+        this._logger.debug(this.name, "access token", this._accessToken);
+      }
+    } else if(this._config.credentials) {
+      const tokens = this._config.credentials.split(":");
+      if (tokens.length < 2) {
+        throw new Error("please provide email and password in the format --credentials EMAIL:PASSWORD");
+      }
+      const email = tokens[0];
+      const password = tokens[1];
+      const body = `client_id=wakanim.android.test2&grant_type=password&response_type=code+id_token+token&client_secret=sypzbgkAPqTd9qrZ12oP&username=${encodeURIComponent(
+        email
+      )}&password=${encodeURIComponent(
+        password
+      )}&scope=email+openid+profile+offline_access+read&redirect_uri=wakanimandroidapp%3A%2F%2Fcallback&nonce=${uuidv4()}&state=${uuidv4()}`;
+      const loginResponse = await fetch("https://account.wakanim.tv/core/connect/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; Android SDK built for x86_64 Build/PSR1.180720.122)",
+          "X-DeviceType": "Google",
+          "X-DeviceVersion": "Android SDK built for x86_64",
+          "X-SoftwareVersion": "9 P",
+          "X-AppVersion": "7.1.0"
+        },
+        body: body
+      });
+      if (!loginResponse.ok) {
+        throw new Error("an error occurred while trying to log in", {cause: loginResponse.statusText});
+      }
+      const loginInformation = await loginResponse.json();
+      this._accessToken = loginInformation.access_token;
+      if (this._config.verbose) {
+        this._logger.debug(this.name, "access token", this._accessToken);
+      }
+    }else {
+      throw new Error("this should have never had happen")
+    }
+    if(!this._accessToken) {
+      return false;
+    }
+    const streamInformationResponse = await fetch("https://account.wakanim.tv/api/user", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this._accessToken}`
+      }
+    });
+    if (!streamInformationResponse.ok) {
+      return false;
+    }
+    this._premiumAccess = !!(await streamInformationResponse.json()).accountType;
+    return true;
+  }
+
   private async _fetchSeasonMetadata(url: string): Promise<ContainerMetadata | null> {
+    if (!this._accessToken) {
+      throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
+    }
     const pages: Page[] = [];
     try {
       const page = await this._setupPage(url, pages);
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".serie .container meta[itemprop=\"name\"]"))?.content);
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector('.serie .container meta[itemprop="name"]'))?.content);
       const episodes = await page.evaluate(() =>
         [...document.querySelectorAll("#container-sub .list-episodes .list-episodes-container>li>div>a")].map(
           (episode) => (<HTMLLinkElement>episode)?.href
@@ -168,39 +258,42 @@ export default class WakanimService extends Extractor {
   }
 
   private async _fetchEpisodeMetadata(url: string): Promise<EpisodeMetadata | null> {
-    const pages: Page[] = [];
+    if (!this._accessToken) {
+      throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
+    }
     try {
-      const page = await this._setupPage(url, pages);
-      const embeddedMetadata = await this._extractDrmMetadata(page);
-      if (embeddedMetadata === null) {
-        throw new Error("Embedded Metadata was not found! Make sure you're logged in");
+      const regexResult = /^https?:\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/episode\/([0-9]+)\/[\-a-zA-Z0-9]+\/?/gi.exec(url);
+      if (!regexResult) {
+        throw new Error("an error occurred while extracting the season id");
       }
-      const manifest = await this._fetchWakanimManifest(page, embeddedMetadata.file);
+      const episodeId = regexResult[2];
+      const streamInformation = await this._fetchStreamInformation(episodeId, this._accessToken);
+
+      const manifestUrl = new URL(streamInformation.episodeFreeStreaming);
+      const kid = manifestUrl.searchParams.get("kid");
+      const token = manifestUrl.searchParams.get("token");
+      if (!token) {
+        throw new Error("an error occurred while extracting token for the license request");
+      }
+
+      const manifestResponse = await fetch(streamInformation.episodeFreeStreaming);
+      if (!manifestResponse.ok) {
+        throw new Error("an error occurred while fetching the stream information");
+      }
+      const manifest = await manifestResponse.text();
+
       let psshData: Record<string, Buffer>;
       if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
       }
+      const episodeIndex = streamInformation.numero;
+      const seasonIndex = Number(streamInformation.season.shortName.substring(1));
+      const container = streamInformation.show.name;
+      const title = streamInformation.title;
 
-      const rqId: string | undefined = await page.evaluate(() => (window as { rqId?: string }).rqId);
-      const rqIdS: string | undefined = await page.evaluate(() => (window as { rqIdS?: string }).rqIdS);
-      if (!rqId || !rqIdS) {
-        throw new Error("Essential fields were missing!");
-      }
-      const episodeIndex = await page.evaluate(
-        () => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"episodeNumber\"]"))?.content
-      );
-      const seasonIndex = await page.evaluate(
-        () =>
-          (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeason\"] meta[itemprop=\"seasonNumber\"]"))?.content
-      );
-      const container = await page.evaluate(
-        () => (<{ content?: string }>document.querySelector(".episode .container span[itemprop=\"partOfSeries\"] meta[itemprop=\"name\"]"))?.content
-      );
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".episode .container meta[itemprop=\"name\"]"))?.content);
-
-      const episodeId = uuidv4();
+      const manifestId = uuidv4();
       if (!this._config.simulate && !this._config.onlyDrm) {
-        this._makeManifestAvailable(episodeId, manifest);
+        this._makeManifestAvailable(manifestId, manifest);
       }
       const metadata: Metadata = {
         type: "episode",
@@ -211,31 +304,33 @@ export default class WakanimService extends Extractor {
         source: {
           url: url,
           manifest: {
-            url: `${this._koaAddress}/${episodeId}`,
-            cleanup: () => this._removeManifest(episodeId)
+            url: `${this._koaAddress}/${manifestId}`,
+            cleanup: () => this._removeManifest(manifestId)
           },
           licenseInformation: {
-            url: embeddedMetadata.drm.widevine.url,
+            url: `https://app-api.wakanim.tv/api/key/widevineapp?kid=${kid}`,
             headers: {
-              "user-agent": this._userAgent,
-              authorization: embeddedMetadata.drm.widevine.headers[0].value,
-              userid: embeddedMetadata.drm.widevine.headers[1].value,
-              d1: embeddedMetadata.drm.widevine.headers[2].value,
-              rqid: rqId,
-              rqids: rqIdS
+              Authorization: token,
+              "X-DeviceType": "Google",
+              "X-Player": "2",
+              //"X-HToken-Forge": "3rncUpFX6RNpPbT7",
+              "X-SoftwareVersion": "9 P",
+              //"X-HToken":
+              //"EFtdgmB+VRECPc/EnTMQlbeWxDT+KRmxyELgKBWCy4BEA9w+lmxLxJpdQrhdVTTiaxQ3M3YXO+KzYcb7Vhwy4KUtz2PW/oR9JPTgPMJegzUn/DMvlDm+jYAdJgZ7fkmn21VEAtxnLAcHaiLWFFR2Ig==",
+              "X-AppVersion": "7.1.0",
+              "X-DeviceVersion": "Android SDK built for x86_64",
+              "Content-Type": "application/octet-stream",
+              "User-Agent": "Wakanim/7.1.0 (Linux;Android 9) ExoPlayerLib/2.13.3"
             },
             psshData: psshData
           }
         }
       };
-      await this._saveCookies(page);
       return metadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
       return null;
-    } finally {
-      pages.forEach((page) => (!page.isClosed() ? page.close() : null));
     }
   }
 
@@ -274,70 +369,22 @@ export default class WakanimService extends Extractor {
     return page;
   }
 
-  private async _extractDrmMetadata(page: Page): Promise<WakanimDrmMetadata | null> {
-    const scripts = await Promise.all(
-      (await page.$$("script")).map(async (scriptHandle) => ({
-        handle: scriptHandle,
-        innerHTML: await scriptHandle.evaluate((script) => script.innerHTML)
-      }))
-    );
-    for (const script of scripts) {
-      if (!script.innerHTML || !script.innerHTML.trim()) {
-        continue;
+  private async _fetchStreamInformation(episodeId: string, accessToken: string) {
+    const streamInformationResponse = await fetch(`https://account.wakanim.tv/api/catalogue/episodestreamingfree?Id=${episodeId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Player": "2"
       }
-      const unparsed = script.innerHTML.trim();
-      try {
-        const foundMetadata = extractObject<WakanimDrmMetadata>(unparsed, _isWakanimDrmMetadata);
-        if (foundMetadata) {
-          return foundMetadata;
-        }
-      } catch (error) {
-        this._logger.debug(this.name, "an error occurred while trying to find metadata objects, ignoring", error, (<Error>error)?.stack);
-      }
+    });
+    if (!streamInformationResponse.ok) {
+      throw new Error("an error occurred while fetching the stream information");
     }
-    return null;
-  }
-
-  private async _fetchWakanimManifest(page: Page, url: string): Promise<string | null> {
-    if (!this._browser) {
-      throw new Error("Not initialized!");
-    }
-    const requestAllowed = await page.evaluate(
-      async (url) =>
-        (
-          await fetch(url, {
-            body: undefined,
-            credentials: "include",
-            headers: {
-              dnt: "1"
-            },
-            method: "HEAD"
-          })
-        ).ok,
-      url
-    );
-    if (!requestAllowed) {
-      throw new Error("manifest request will be denied");
-    }
-    this._logger.debug(this.name, "fetching manifest", url);
-    const manifest = await page.evaluate(
-      async (url) =>
-        await (
-          await fetch(url, {
-            body: undefined,
-            credentials: "include",
-            headers: {
-              dnt: "1"
-            },
-            method: "GET"
-          })
-        ).text(),
-      url
-    );
+    const streamInformation = await streamInformationResponse.json();
     if (this._config.verbose) {
-      writeFileSync(`wakanim-manifest-${uuidv4()}.xml`, manifest);
+      writeFileSync(`wakanim-stream-${uuidv4()}.json`, JSON.stringify(streamInformation, null, 2));
     }
-    return manifest;
+    return streamInformation;
   }
 
   get name(): string {
