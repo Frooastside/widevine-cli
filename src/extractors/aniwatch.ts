@@ -20,6 +20,15 @@ import {
   isVariableDeclaration
 } from "../extractor.js";
 
+export interface ContainerData {
+  page: string;
+  name: string;
+  anime_id: string;
+  mal_id: string;
+  anilist_id: string;
+  series_url: string;
+}
+
 export default class AniwatchService extends Extractor {
   private _config: Config;
   private _logger: Logger;
@@ -62,13 +71,13 @@ export default class AniwatchService extends Extractor {
       const seasonId = regexResult[5];
       const episodeList = await this._fetchEpisodeList(seasonId);
       this._logger.jsonDump("DEBUG", this.name, episodeList);
+      const containerData = await this._fetchContainerData(url);
       const episodeMetadataList: EpisodeMetadata[] = [];
       for (const episode of episodeList) {
-        const episodeMetadata = await this._fetchEpisodeMetadata(episode.episodeId);
+        const episodeMetadata = await this._fetchEpisodeMetadata(seasonId, episode.episodeId, containerData.name);
         if (!episodeMetadata) {
           return null;
         }
-        episodeMetadata.index = episode.index;
         episodeMetadata.title = episode.title;
         episodeMetadataList.push(episodeMetadata);
       }
@@ -107,8 +116,9 @@ export default class AniwatchService extends Extractor {
       if (!regexResult) {
         throw new Error("an error occurred while extracting the episode id");
       }
+      const seasonId = regexResult[4];
       const episodeId = regexResult[6];
-      return await this._fetchEpisodeMetadata(episodeId);
+      return await this._fetchEpisodeMetadata(seasonId, episodeId);
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
@@ -116,7 +126,7 @@ export default class AniwatchService extends Extractor {
     }
   }
 
-  private async _fetchEpisodeMetadata(episodeId: string): Promise<EpisodeMetadata | null> {
+  private async _fetchEpisodeMetadata(seasonId: string, episodeId: string, container?: string): Promise<EpisodeMetadata | null> {
     try {
       const servers = await this._fetchServers(episodeId);
       this._logger.jsonDump("DEBUG", this.name, servers);
@@ -156,8 +166,38 @@ export default class AniwatchService extends Extractor {
 
       this._logger.jsonDump("DEBUG", this.name, sourceInformationJson);
 
+      let episodeTitle: string | undefined;
+      let episodeIndex: number | undefined | null;
+      try {
+        const episodeList = await this._fetchEpisodeList(seasonId);
+        for (const episode of episodeList) {
+          if (episode.episodeId === episodeId) {
+            episodeTitle = episode.title;
+            episodeIndex = episode.index;
+            break;
+          }
+        }
+        episodeIndex = episodeIndex ?? null;
+      } catch (error) {
+        this._logger.debug(this.name, error, (<Error>error)?.stack);
+        this._logger.error(this.name, error);
+      }
+
+      if (!container) {
+        try {
+          const containerData = await this._fetchContainerData(`https://aniwatch.to/watch/jujutsu-kaisen-2nd-season-${seasonId}?ep=${episodeId}`);
+          container = containerData.name;
+        } catch (error) {
+          this._logger.debug(this.name, error, (<Error>error)?.stack);
+          this._logger.error(this.name, error);
+        }
+      }
+
       const metadata: EpisodeMetadata = {
         type: "episode",
+        title: episodeTitle,
+        index: episodeIndex,
+        container: container,
         source: {
           url: sourceInformationJson.sources[0].file
         }
@@ -169,6 +209,19 @@ export default class AniwatchService extends Extractor {
       this._logger.error(this.name, error);
       return null;
     }
+  }
+
+  private async _fetchContainerData(url: string) {
+    const episodeListResponse = await fetch(url, {
+      method: "GET"
+    });
+    if (!episodeListResponse.ok) {
+      throw new Error("an error occurred while fetching the episode list");
+    }
+    const responseText = await episodeListResponse.text();
+    const $ = load(responseText);
+    const containerData: ContainerData = JSON.parse($("script#syncData").text());
+    return containerData;
   }
 
   private async _fetchServers(episodeId: string) {
