@@ -1,7 +1,6 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import chalk from "chalk";
 import dotenv from "dotenv";
-import { statSync } from "fs";
 import App from "./app.js";
 
 dotenv.config();
@@ -27,12 +26,11 @@ const program = new Command()
   .addOption(new Option("   --skip-drm"))
   .addOption(new Option("   --force-local-drm").conflicts("forceRemoteDrm"))
   .addOption(new Option("   --force-remote-drm").conflicts("forceLocalDrm"))
-  .addOption(new Option("-p --post-processor [post-processors...]"))
-  .addOption(new Option("   --jellyfin-root [path]").default("."))
-  .addOption(new Option("   --chrome-channel [channel]").choices(["chrome", "chrome-beta", "chrome-dev", "chrome-canary"]).default("chrome"))
+  .addOption(new Option("-o --output <path>", "Output path. Specify a directory or use the {ext} template option.").default("./{title}.{ext}"))
+  .addOption(new Option("   --chrome-channel <channel>").choices(["chrome", "chrome-beta", "chrome-dev", "chrome-canary"]).default("chrome"))
   .addOption(new Option("   --chrome-unsecure"))
   .addOption(new Option("   --chrome-load-cookies"))
-  .addOption(new Option("-N --concurrent-fragments [threads]").default(1).argParser((string) => Number(string ?? "1")));
+  .addOption(new Option("-N --concurrent-fragments <threads>").default(1).argParser((string) => Number(string ?? "1")));
 
 program.parse(process.argv);
 
@@ -40,12 +38,6 @@ const config = program.opts();
 
 if (!config.interactive && !config.input) {
   program.error("you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive].");
-}
-
-if (config.jellyfinRoot === true) {
-  program.error("you have to provide a path after [--jellyfin-root]");
-} else if (!statSync(config.jellyfinRoot).isDirectory()) {
-  program.error("you have to provide a directory [--jellyfin-root]");
 }
 
 const app = new App(config);

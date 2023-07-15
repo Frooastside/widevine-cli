@@ -18,7 +18,7 @@ import {
   isReturnStatement,
   isTryStatement,
   isVariableDeclaration
-} from "../expressions.js";
+} from "../extractor.js";
 
 export default class AniwatchService extends Extractor {
   private _config: Config;
@@ -45,7 +45,7 @@ export default class AniwatchService extends Extractor {
 
   async fetchMetadata(url: string): Promise<Metadata | null> {
     if (/^(https?:)\/\/(www\.)?aniwatch\.to\/watch\/([a-z0-9]+\-)+([0-9]+)(\?ep=([0-9]+))/gi.test(url) /* https://regex101.com/r/ChlN5x/1 */) {
-      return await this._fetchEpisodeMetadata(url);
+      return await this._fetchEpisodeMetadataFromUrl(url);
     } else if (/^(https?:)\/\/(www\.)?aniwatch\.to\/(watch\/)?([a-z0-9]+\-)+([0-9]+)$/gi.test(url) /* https://regex101.com/r/kVwqQC/1 */) {
       return await this._fetchSeasonMetadata(url);
     } else {
@@ -103,7 +103,7 @@ export default class AniwatchService extends Extractor {
 
   private async _fetchEpisodeMetadataFromUrl(url: string): Promise<EpisodeMetadata | null> {
     try {
-      const regexResult = /^(https?:)\/\/(www\.)?aniwatch\.to\/(watch\/)?([a-z0-9]+\-)+([0-9]+)$/gi.exec(url);
+      const regexResult = /^(https?:)\/\/(www\.)?aniwatch\.to\/watch\/([a-z0-9]+\-)+([0-9]+)(\?ep=([0-9]+))/gi.exec(url);
       if (!regexResult) {
         throw new Error("an error occurred while extracting the episode id");
       }
@@ -196,6 +196,8 @@ export default class AniwatchService extends Extractor {
       throw new Error("an error occurred while fetching the episode list, server status is bad");
     }
     const rawHtml = decodeURIComponent(jsonRepsonse.html);
+    this._logger.debug(this.name, "raw html", rawHtml, url);
+    this._logger.jsonDump("DEBUG", this.name, jsonRepsonse);
     const $ = load(rawHtml);
     return $;
   }

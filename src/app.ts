@@ -1,5 +1,5 @@
 import enquirer from "enquirer";
-import { rm as rawRm } from "fs";
+import { existsSync, rm as rawRm } from "fs";
 import { Holz } from "holz-provider";
 import { KeyContainer } from "node-widevine";
 import { exit } from "process";
@@ -18,20 +18,12 @@ import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
-import GenericPostProcessor from "./post-processors/generic.js";
-import Jellyfin from "./post-processors/jellyfin.js";
-import {
-  ContainerDownload,
-  Download,
-  Downloader,
-  EpisodeDownload,
-  Extractor,
-  isContainerDownload,
-  Metadata,
-  Output,
-  PostProcessor
-} from "./service.js";
+import { ContainerDownload, Download, Downloader, EpisodeDownload, Extractor, isContainerDownload, Metadata, Output } from "./service.js";
 import AniwatchService from "./extractors/aniwatch.js";
+import FFMPEG from "./ffmpeg.js";
+import filenamify from "filenamify";
+import { extname } from "path";
+import { copyFile, mkdir } from "fs/promises";
 
 const rm = promisify(rawRm);
 
@@ -46,9 +38,6 @@ export default class App {
 
   private _downloaders: Downloader[];
   private _genericDownloader: Downloader;
-
-  private _postProcessors: PostProcessor[];
-  private _genericPostProcessor: PostProcessor;
 
   constructor(config: Config) {
     this._config = config;
@@ -80,8 +69,6 @@ export default class App {
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config, this._logger);
-    this._postProcessors = [new Jellyfin(config, this._logger)];
-    this._genericPostProcessor = new GenericPostProcessor();
   }
 
   async start() {
@@ -125,28 +112,11 @@ export default class App {
       }
     }
     const output = await this._handleMissingInformation(download);
-    const postProcessors = this._postProcessors.filter((postProcessor) =>
-      Array.isArray(this._config.postProcessor)
-        ? !!this._config.postProcessor.find((input) => input.toLowerCase() === postProcessor.name.toLowerCase())
-        : false
-    );
-    if (!postProcessors.length) {
-      postProcessors.push(this._genericPostProcessor);
-    }
-    for (const postProcessor of postProcessors) {
-      if (!postProcessor) {
-        continue;
-      }
-      try {
-        await postProcessor.process(output);
-      } catch (error) {
-        this._logger.debug(postProcessor.name, error, (<Error>error)?.stack);
-        this._handleError(postProcessor.name, error);
-        continue;
-      }
-    }
+    await this._handleOutputs(output);
     try {
-      await this._removeTemporaryFiles(download);
+      if (!this._config.verbose) {
+        await this._removeTemporaryFiles(download);
+      }
     } catch (error) {
       this._logger.warn(undefined, "an error occurred while deleting temporary files");
     }
@@ -161,6 +131,57 @@ export default class App {
     } else {
       for (const file of download.files) {
         await rm(file.path);
+      }
+    }
+  }
+
+  private async _handleOutputs(output: Output | Output[]) {
+    if (Array.isArray(output)) {
+      for (const singleOutput of output) {
+        this._handleOutput(singleOutput);
+      }
+    } else {
+      this._handleOutput(output);
+    }
+  }
+
+  private async _handleOutput(output: Output) {
+    const directoryOutput = !this._config.output.includes("{ext}");
+    const combineFiles = true;
+    const title = filenamify(output.title);
+    const container = filenamify(output.container || "null");
+    const seasonNumber = output.season || 0;
+    const episodeNumber = output.index || 0;
+    const ffmpeg = new FFMPEG(this._logger);
+    const outputPath = this._config.output
+      .replaceAll("{title}", `${title}`)
+      .replaceAll("{series_name}", `${container}`)
+      .replaceAll("{season_number}", `${seasonNumber}`)
+      .replaceAll("{episode_number}", `${episodeNumber}`);
+    if (directoryOutput) {
+      await mkdir(outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/", { recursive: true });
+      if (combineFiles) {
+        ffmpeg.combineFiles(output.files, `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}.mkv`);
+      } else {
+        for (const file of output.files) {
+          let filePath = `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}.${extname(file)}`;
+          if (existsSync(filePath)) {
+            filePath = `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}-${uuidv4()}.${extname(
+              file
+            )}`;
+          }
+          await copyFile(file, filePath);
+        }
+      }
+    } else {
+      await mkdir(outputPath, { recursive: true });
+      if (combineFiles) {
+        ffmpeg.combineFiles(output.files, outputPath.replaceAll("{ext}", "mkv"));
+      } else {
+        for (const file of output.files) {
+          const filePath = `${outputPath.replaceAll("{ext}", extname(file))}`;
+          await copyFile(file, filePath);
+        }
       }
     }
   }
@@ -206,11 +227,9 @@ export default class App {
 
       return outputs;
     } else {
-      console.log(input.metadata.container);
       const container =
         input.metadata.container ??
         (input.metadata.season === null || input.metadata.index === null ? null : await this._title(input.metadata.container || undefined, true));
-      console.log(container);
       let title = await this._title(input.metadata.title, false);
       if (!title) {
         title = uuidv4();
