@@ -22,7 +22,7 @@ import { ContainerDownload, Download, Downloader, EpisodeDownload, Extractor, is
 import AniwatchService from "./extractors/aniwatch.js";
 import FFMPEG from "./ffmpeg.js";
 import filenamify from "filenamify";
-import { extname } from "path";
+import { basename, dirname, extname } from "path";
 import { copyFile, mkdir } from "fs/promises";
 
 const rm = promisify(rawRm);
@@ -146,41 +146,43 @@ export default class App {
   }
 
   private async _handleOutput(output: Output) {
-    const directoryOutput = !this._config.output.includes("{ext}");
+    const useDirectoryAsOutput = !extname(this._config.output);
     const combineFiles = true;
+
     const title = filenamify(output.title);
     const container = filenamify(output.container || "null");
     const seasonNumber = output.season || 0;
     const episodeNumber = output.index || 0;
+
     const ffmpeg = new FFMPEG(this._logger);
     const outputPath = this._config.output
       .replaceAll("{title}", `${title}`)
       .replaceAll("{series_name}", `${container}`)
       .replaceAll("{season_number}", `${seasonNumber}`)
       .replaceAll("{episode_number}", `${episodeNumber}`);
-    if (directoryOutput) {
-      await mkdir(outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/", { recursive: true });
+    const directoryPath = dirname(outputPath);
+
+    if (useDirectoryAsOutput) {
+      await mkdir(directoryPath, { recursive: true });
       if (combineFiles) {
-        ffmpeg.combineFiles(output.files, `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}.mkv`);
+        ffmpeg.combineFiles(output.files, `${directoryPath}/${title}.mkv`);
       } else {
         for (const file of output.files) {
-          let filePath = `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}.${extname(file)}`;
+          let filePath = `${directoryPath}/${title}.${extname(file)}`;
           if (existsSync(filePath)) {
-            filePath = `${outputPath.endsWith("/") || outputPath.endsWith("\\") ? outputPath : outputPath + "/"}${title}-${uuidv4()}.${extname(
-              file
-            )}`;
+            filePath = `${directoryPath}/${title}-${uuidv4()}.${extname(file)}`;
           }
           await copyFile(file, filePath);
         }
       }
     } else {
-      await mkdir(outputPath, { recursive: true });
-      if (combineFiles) {
-        ffmpeg.combineFiles(output.files, outputPath.replaceAll("{ext}", "mkv"));
+      const filePath = basename(outputPath);
+      await mkdir(directoryPath, { recursive: true });
+      if (combineFiles || !filePath.includes("{ext}")) {
+        ffmpeg.combineFiles(output.files, `${directoryPath}/${filePath.includes("{ext}") ? filePath.replaceAll("{ext}", "mkv") : filePath}`);
       } else {
         for (const file of output.files) {
-          const filePath = `${outputPath.replaceAll("{ext}", extname(file))}`;
-          await copyFile(file, filePath);
+          await copyFile(file, `${directoryPath}/${filePath.replaceAll("{ext}", extname(file))}`);
         }
       }
     }

@@ -40,6 +40,10 @@ if (!config.interactive && !config.input) {
   program.error("you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive].");
 }
 
+console.log = () => {};
+console.error = () => {};
+console.warn = () => {};
+
 const app = new App(config);
 
 try {
