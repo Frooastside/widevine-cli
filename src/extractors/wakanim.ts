@@ -2,10 +2,7 @@ import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
 import { exit } from "process";
-import { Browser, Page } from "puppeteer";
-import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
-import { addCookies, cookieJar, writeCookieJar } from "../cookie-parser.js";
 import { extractPsshData } from "../drm.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
@@ -14,11 +11,21 @@ import { URL } from "url";
 import { createCipheriv } from "crypto";
 import { format } from "util";
 
+type WakanimSeason = {
+  idSeason: number;
+  episodes: WakanimEpisode[];
+};
+
+type WakanimEpisode = {
+  id: number;
+  title: string;
+  numero: number;
+};
+
 export default class WakanimService extends Extractor {
   private _config: Config;
   private _logger: Logger;
   private _initialized = false;
-  private _browser?: Browser;
   private _koa: Koa;
   private _koaServer: Server;
   private _koaAddress: string;
@@ -59,23 +66,10 @@ export default class WakanimService extends Extractor {
 
   async initialize() {
     this._initialized = true;
-    this._browser = <Browser>await puppeteer.launch({
-      headless: !this._config.visual,
-      channel:
-        typeof this._config.chromeChannel === "string"
-          ? (this._config.chromeChannel as "chrome" | "chrome-beta" | "chrome-dev" | "chrome-canary")
-          : "chrome",
-      args: [`--window-size=${840},${560}`, ...(this._config.chromeUnsecure ? ["--no-sandbox"] : [])]
-    });
-    this._playerUserAgent = (await this._browser.userAgent()).replace("HeadlessChrome/", "Chrome/");
-    if (this._playerUserAgent.includes("Linux") && !this._playerUserAgent.includes("Android")) {
-      this._playerUserAgent = this._playerUserAgent.replace(/\(([^)]+)\)/, "(Windows NT 10.0; Win64; x64)");
-    }
   }
 
   async release() {
     this._initialized = false;
-    this._browser?.close();
     this._koaServer.closeAllConnections();
     this._koaServer.close();
   }
@@ -105,15 +99,15 @@ export default class WakanimService extends Extractor {
         url
       ) /* https://regex101.com/r/2T6ZsI/2 */
     ) {
-      return await this._fetchEpisodeMetadata(url);
+      return await this._fetchEpisodeMetadataFromUrl(url);
     } else if (
-      /^(https?:)\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/(show)\/[0-9]+\/[\-a-zA-Z0-9]+\/?(season\/[0-9]+\/[\-a-zA-Z0-9]+)\/?/gi.test(
+      /^https?:\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/show\/([0-9]+)\/[\-a-zA-Z0-9]+(\/season\/([0-9]+)\/[\-a-zA-Z0-9]+)?\/?/gi.test(
         url
-      ) /* https://regex101.com/r/PHufNF/1 */
+      ) /* https://regex101.com/r/PHufNF/3 */
     ) {
       return await this._fetchSeasonMetadata(url);
     } else {
-      throw new Error("whole containers are not supported yet");
+      throw new Error("this should have never had happen");
     }
   }
 
@@ -202,22 +196,27 @@ export default class WakanimService extends Extractor {
     if (!this._accessToken) {
       throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
     }
-    const pages: Page[] = [];
     try {
-      const page = await this._setupPage(url, pages);
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".serie .container meta[itemprop=\"name\"]"))?.content);
-      const episodes = await page.evaluate(() =>
-        [...document.querySelectorAll("#container-sub .list-episodes .list-episodes-container>li>div>a")].map(
-          (episode) => (<HTMLLinkElement>episode)?.href
-        )
-      );
-      if (!episodes) {
-        throw new Error("an error occurred while extracting the episodes");
+      const regexResult =
+        /^https?:\/\/(www\.)?wakanim\.tv\/[a-z]+\/v[0-9]\/catalogue\/show\/([0-9]+)\/[\-a-zA-Z0-9]+(\/season\/([0-9]+)\/[\-a-zA-Z0-9]+)?\/?/gi.exec(
+          url
+        );
+      if (!regexResult) {
+        throw new Error("an error occurred while extracting the season id");
       }
+      const showId = regexResult[2];
+      const seasonId = regexResult[4];
+
+      const showInformation = await this._fetchShowInformation(showId, this._accessToken);
+
+      const episodes = showInformation.seasons
+        .filter((season: { idSeason: number }) => (seasonId ? `${season.idSeason}` : true))
+        .flatMap((season: WakanimSeason) => season.episodes);
+
       const episodeMetadataList: EpisodeMetadata[] = [];
-      for (const url of episodes) {
+      for (const episode of episodes) {
         try {
-          const episodeMetadata = await this._fetchEpisodeMetadata(url);
+          const episodeMetadata = await this._fetchEpisodeMetadata(episode.id);
           if (!episodeMetadata) {
             throw new Error(`got empty episode metadata from "${url}"`);
           }
@@ -235,34 +234,24 @@ export default class WakanimService extends Extractor {
       if (!episodeMetadataList.length) {
         throw new Error("could not fetch the metadata of any episode");
       }
+
       const containerMetadata: ContainerMetadata = {
         type: "container",
         source: {
           url: url
         },
         contents: episodeMetadataList,
-        title: title
+        title: showInformation.name
       };
-      await this._saveCookies(page);
       return containerMetadata;
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
       return null;
-    } finally {
-      pages.forEach((page) => (!page.isClosed() ? page.close() : null));
-    }
-  }
-  private async _saveCookies(page: Page) {
-    const client = await page.target().createCDPSession();
-    if (client) {
-      const cookies = (await client.send("Network.getAllCookies")).cookies;
-      addCookies(cookies);
-      writeCookieJar();
     }
   }
 
-  private async _fetchEpisodeMetadata(url: string): Promise<EpisodeMetadata | null> {
+  private async _fetchEpisodeMetadataFromUrl(url: string): Promise<EpisodeMetadata | null> {
     if (!this._accessToken || !this._userId) {
       throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
     }
@@ -272,6 +261,19 @@ export default class WakanimService extends Extractor {
         throw new Error("an error occurred while extracting the season id");
       }
       const episodeId = regexResult[2];
+      return await this._fetchEpisodeMetadata(episodeId, url);
+    } catch (error) {
+      this._logger.debug(this.name, error, (<Error>error)?.stack);
+      this._logger.error(this.name, error);
+      return null;
+    }
+  }
+
+  private async _fetchEpisodeMetadata(episodeId: string, url?: string): Promise<EpisodeMetadata | null> {
+    if (!this._accessToken || !this._userId) {
+      throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
+    }
+    try {
       const streamInformation = await this._fetchStreamInformation(episodeId, this._accessToken);
 
       const manifestUrl = new URL(streamInformation.episodeFreeStreaming);
@@ -303,7 +305,7 @@ export default class WakanimService extends Extractor {
         throw new Error("an error occurred while parsing the manifest");
       }
       const episodeIndex = streamInformation.numero;
-      const seasonIndex = Number(streamInformation.season.shortName.substring(1));
+      const seasonIndex = this._parseShortSeason(streamInformation.season.shortName);
       const container = streamInformation.show.name;
       const title = streamInformation.title;
 
@@ -349,39 +351,36 @@ export default class WakanimService extends Extractor {
     }
   }
 
-  private async _setupPage(url: string, pages: Page[]): Promise<Page> {
-    if (!this._browser) {
-      throw new Error("Not initialized!");
+  private _parseShortSeason(shortName: string): number | null {
+    const regex = /^(S([0-9]))?(A([0-9]))?$/gi.exec(shortName);
+    if (!regex) {
+      return null;
     }
-    const page = await this._browser.newPage();
-    pages.push(page);
-    page.on("popup", (page) => (page ? pages.push(page) : null));
-    await page.setCookie(...cookieJar);
-    this._logger.jsonDump("DEBUG", this.name, cookieJar);
-    this._logger.debug(this.name, `visiting "${url}"`);
+    const coup = Number(regex[4]);
+    const season = Number(regex[2]) || (coup ? 1 : null);
+    return season;
+  }
 
-    await page.goto(url, {
-      waitUntil: "networkidle0",
-      timeout: 0
-    });
-    await page.waitForSelector("#main-iframe, #breakpoints");
-    await delay(2000);
-    const mainIframe = await page.$("#main-iframe");
-    if (mainIframe !== null) {
-      this._logger.debug(this.name, "seems like incapsula wants us to solve a captcha, be prepared.");
-      for (const frame of page.mainFrame().childFrames()) {
-        await frame.solveRecaptchas();
+  private async _fetchShowInformation(showId: string, accessToken: string) {
+    const showInformationResponse = await fetch(`https://account.wakanim.tv/api/catalogue/show?Id=${showId}`, {
+      method: "GET",
+      headers: {
+        "User-Agent": this._deviceUserAgent,
+        Authorization: `Bearer ${accessToken}`,
+        "X-DeviceType": "Google",
+        "X-SoftwareVersion": "12 S",
+        "X-AppVersion": "7.1.0",
+        "X-DeviceVersion": "sdk_gphone64_x86_64"
       }
-      await delay(1000);
-      await page.waitForSelector("#main-iframe, #breakpoints");
-      await delay(2000);
+    });
+    if (!showInformationResponse.ok) {
+      throw new Error("an error occurred while fetching the show information");
     }
-    this._logger.debug(this.name, `finished loading "${url}"`);
+    const showInformation = await showInformationResponse.json();
     if (this._config.verbose) {
-      writeFileSync(`wakanim-page-${uuidv4()}.html`, await page.content());
+      writeFileSync(`wakanim-show-${uuidv4()}.json`, JSON.stringify(showInformation, null, 2));
     }
-
-    return page;
+    return showInformation;
   }
 
   private async _fetchStreamInformation(episodeId: string, accessToken: string) {
@@ -394,8 +393,7 @@ export default class WakanimService extends Extractor {
         "X-Player": "2",
         "X-SoftwareVersion": "12 S",
         "X-AppVersion": "7.1.0",
-        "X-DeviceVersion": "sdk_gphone64_x86_64",
-        "Content-Type": "application/octet-stream"
+        "X-DeviceVersion": "sdk_gphone64_x86_64"
       }
     });
     if (!streamInformationResponse.ok) {

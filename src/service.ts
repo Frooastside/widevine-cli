@@ -97,7 +97,7 @@ export interface EpisodeMetadata extends MetadataBase {
 export type DataType = "container" | "episode";
 
 export type Source = {
-  url: string;
+  url?: string;
   manifest?: Manifest;
   licenseInformation?: LicenseInformation;
 };
