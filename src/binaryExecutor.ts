@@ -22,7 +22,6 @@ export default class BinaryExecutor {
   }
 
   async execute(args: ExecutionArguments): Promise<string> {
-    console.log(`"${this._executionPath}"`, args.flat());
     const { stdout } = await exec(`${this._executionPath} ${args.map((arg) => (typeof arg === "string" ? arg : arg.join(" "))).join(" ")}`, {
       maxBuffer: 1024 * 1024 * 10
     });
@@ -30,7 +29,6 @@ export default class BinaryExecutor {
   }
 
   async spawn(args: ExecutionArguments): Promise<ChildProcess> {
-    console.log(`"${this._executionPath}"`, args.flat());
     return spawn(`"${this._executionPath}"`, args.flat(), { shell: true });
   }
 }
