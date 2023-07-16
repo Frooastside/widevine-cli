@@ -7,11 +7,12 @@ import puppeteer from "puppeteer-extra";
 import { v4 as uuidv4, validate } from "uuid";
 import { addCookies, cookieJar, writeCookieJar } from "../cookie-parser.js";
 import { extractPsshData } from "../drm.js";
-import { extractObject } from "../extractor.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 import { URL } from "url";
+import { createCipheriv } from "crypto";
+import { format } from "util";
 
 export default class WakanimService extends Extractor {
   private _config: Config;
@@ -22,7 +23,9 @@ export default class WakanimService extends Extractor {
   private _koaServer: Server;
   private _koaAddress: string;
   private _manifests: Record<string, string> = {};
-  private _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
+  private _deviceUserAgent = "Dalvik/2.1.0 (Linux; U; Android 12; sdk_gphone64_x86_64 Build/SE1A.220826.006.A1)";
+  private _playerUserAgent = "Wakanim/7.1.0 (Linux;Android 12) ExoPlayerLib/2.13.3";
+  private _userId?: string;
   private _accessToken?: string;
   private _premiumAccess?: boolean;
 
@@ -64,9 +67,9 @@ export default class WakanimService extends Extractor {
           : "chrome",
       args: [`--window-size=${840},${560}`, ...(this._config.chromeUnsecure ? ["--no-sandbox"] : [])]
     });
-    this._userAgent = (await this._browser.userAgent()).replace("HeadlessChrome/", "Chrome/");
-    if (this._userAgent.includes("Linux") && !this._userAgent.includes("Android")) {
-      this._userAgent = this._userAgent.replace(/\(([^)]+)\)/, "(Windows NT 10.0; Win64; x64)");
+    this._playerUserAgent = (await this._browser.userAgent()).replace("HeadlessChrome/", "Chrome/");
+    if (this._playerUserAgent.includes("Linux") && !this._playerUserAgent.includes("Android")) {
+      this._playerUserAgent = this._playerUserAgent.replace(/\(([^)]+)\)/, "(Windows NT 10.0; Win64; x64)");
     }
   }
 
@@ -125,24 +128,24 @@ export default class WakanimService extends Extractor {
       const loginResponse = await fetch("https://account.wakanim.tv/core/connect/token", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; Android SDK built for x86_64 Build/PSR1.180720.122)",
+          "User-Agent": this._deviceUserAgent,
           "X-DeviceType": "Google",
-          "X-DeviceVersion": "Android SDK built for x86_64",
-          "X-SoftwareVersion": "9 P",
-          "X-AppVersion": "7.1.0"
+          "X-SoftwareVersion": "12 S",
+          "X-AppVersion": "7.1.0",
+          "X-DeviceVersion": "sdk_gphone64_x86_64",
+          "Content-Type": "application/x-www-form-urlencoded"
         },
         body: body
       });
       if (!loginResponse.ok) {
-        throw new Error("an error occurred while trying to log in", {cause: loginResponse.statusText});
+        throw new Error("an error occurred while trying to log in", { cause: loginResponse.statusText });
       }
       const loginInformation = await loginResponse.json();
       this._accessToken = loginInformation.access_token;
       if (this._config.verbose) {
         this._logger.debug(this.name, "access token", this._accessToken);
       }
-    } else if(this._config.credentials) {
+    } else if (this._config.credentials) {
       const tokens = this._config.credentials.split(":");
       if (tokens.length < 2) {
         throw new Error("please provide email and password in the format --credentials EMAIL:PASSWORD");
@@ -157,39 +160,41 @@ export default class WakanimService extends Extractor {
       const loginResponse = await fetch("https://account.wakanim.tv/core/connect/token", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; Android SDK built for x86_64 Build/PSR1.180720.122)",
+          "User-Agent": this._deviceUserAgent,
           "X-DeviceType": "Google",
-          "X-DeviceVersion": "Android SDK built for x86_64",
-          "X-SoftwareVersion": "9 P",
-          "X-AppVersion": "7.1.0"
+          "X-SoftwareVersion": "12 S",
+          "X-AppVersion": "7.1.0",
+          "X-DeviceVersion": "sdk_gphone64_x86_64",
+          "Content-Type": "application/x-www-form-urlencoded"
         },
         body: body
       });
       if (!loginResponse.ok) {
-        throw new Error("an error occurred while trying to log in", {cause: loginResponse.statusText});
+        throw new Error("an error occurred while trying to log in", { cause: loginResponse.statusText });
       }
       const loginInformation = await loginResponse.json();
       this._accessToken = loginInformation.access_token;
       if (this._config.verbose) {
         this._logger.debug(this.name, "access token", this._accessToken);
       }
-    }else {
-      throw new Error("this should have never had happen")
+    } else {
+      throw new Error("this should have never had happen");
     }
-    if(!this._accessToken) {
+    if (!this._accessToken) {
       return false;
     }
-    const streamInformationResponse = await fetch("https://account.wakanim.tv/api/user", {
+    const userInformationResponse = await fetch("https://account.wakanim.tv/api/user", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${this._accessToken}`
       }
     });
-    if (!streamInformationResponse.ok) {
+    if (!userInformationResponse.ok) {
       return false;
     }
-    this._premiumAccess = !!(await streamInformationResponse.json()).accountType;
+    const userInformation = await userInformationResponse.json();
+    this._premiumAccess = !!userInformation.accountType;
+    this._userId = userInformation.public.userId;
     return true;
   }
 
@@ -200,7 +205,7 @@ export default class WakanimService extends Extractor {
     const pages: Page[] = [];
     try {
       const page = await this._setupPage(url, pages);
-      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector('.serie .container meta[itemprop="name"]'))?.content);
+      const title = await page.evaluate(() => (<{ content?: string }>document.querySelector(".serie .container meta[itemprop=\"name\"]"))?.content);
       const episodes = await page.evaluate(() =>
         [...document.querySelectorAll("#container-sub .list-episodes .list-episodes-container>li>div>a")].map(
           (episode) => (<HTMLLinkElement>episode)?.href
@@ -258,7 +263,7 @@ export default class WakanimService extends Extractor {
   }
 
   private async _fetchEpisodeMetadata(url: string): Promise<EpisodeMetadata | null> {
-    if (!this._accessToken) {
+    if (!this._accessToken || !this._userId) {
       throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
     }
     try {
@@ -272,11 +277,22 @@ export default class WakanimService extends Extractor {
       const manifestUrl = new URL(streamInformation.episodeFreeStreaming);
       const kid = manifestUrl.searchParams.get("kid");
       const token = manifestUrl.searchParams.get("token");
-      if (!token) {
+      const forge = manifestUrl.searchParams.get("forge");
+      if (!kid || !token || !forge) {
         throw new Error("an error occurred while extracting token for the license request");
       }
 
-      const manifestResponse = await fetch(streamInformation.episodeFreeStreaming);
+      this._logger.debug(this.name, "manifest url", streamInformation.episodeFreeStreaming);
+      const manifestResponse = await fetch(streamInformation.episodeFreeStreaming, {
+        headers: {
+          "User-Agent": this._playerUserAgent,
+          "X-DeviceType": "Google",
+          "X-Player": "2",
+          "X-SoftwareVersion": "12 S",
+          "X-AppVersion": "7.1.0",
+          "X-DeviceVersion": "sdk_gphone64_x86_64"
+        }
+      });
       if (!manifestResponse.ok) {
         throw new Error("an error occurred while fetching the stream information");
       }
@@ -310,17 +326,16 @@ export default class WakanimService extends Extractor {
           licenseInformation: {
             url: `https://app-api.wakanim.tv/api/key/widevineapp?kid=${kid}`,
             headers: {
+              "User-Agent": this._playerUserAgent,
               Authorization: token,
               "X-DeviceType": "Google",
               "X-Player": "2",
-              //"X-HToken-Forge": "3rncUpFX6RNpPbT7",
-              "X-SoftwareVersion": "9 P",
-              //"X-HToken":
-              //"EFtdgmB+VRECPc/EnTMQlbeWxDT+KRmxyELgKBWCy4BEA9w+lmxLxJpdQrhdVTTiaxQ3M3YXO+KzYcb7Vhwy4KUtz2PW/oR9JPTgPMJegzUn/DMvlDm+jYAdJgZ7fkmn21VEAtxnLAcHaiLWFFR2Ig==",
+              "X-SoftwareVersion": "12 S",
               "X-AppVersion": "7.1.0",
-              "X-DeviceVersion": "Android SDK built for x86_64",
-              "Content-Type": "application/octet-stream",
-              "User-Agent": "Wakanim/7.1.0 (Linux;Android 9) ExoPlayerLib/2.13.3"
+              "X-DeviceVersion": "sdk_gphone64_x86_64",
+              "X-HToken-Forge": forge,
+              "X-HToken": calculateHToken(this._userId, forge, kid, "wakanim.android.test2"),
+              "Content-Type": "application/octet-stream"
             },
             psshData: psshData
           }
@@ -373,8 +388,14 @@ export default class WakanimService extends Extractor {
     const streamInformationResponse = await fetch(`https://account.wakanim.tv/api/catalogue/episodestreamingfree?Id=${episodeId}`, {
       method: "GET",
       headers: {
+        "User-Agent": this._playerUserAgent,
         Authorization: `Bearer ${accessToken}`,
-        "X-Player": "2"
+        "X-DeviceType": "Google",
+        "X-Player": "2",
+        "X-SoftwareVersion": "12 S",
+        "X-AppVersion": "7.1.0",
+        "X-DeviceVersion": "sdk_gphone64_x86_64",
+        "Content-Type": "application/octet-stream"
       }
     });
     if (!streamInformationResponse.ok) {
@@ -399,76 +420,15 @@ export default class WakanimService extends Extractor {
   }
 }
 
-function _isWakanimDrmMetadata(object: unknown): object is WakanimDrmMetadata {
-  return (
-    typeof object === "object" &&
-    (<object>object).hasOwnProperty("file") &&
-    typeof (<{ file: unknown }>object).file === "string" &&
-    (<object>object).hasOwnProperty("drm") &&
-    typeof (<{ drm: unknown }>object).drm === "object" &&
-    (<{ drm: object }>object).drm.hasOwnProperty("widevine") &&
-    typeof (<{ drm: { widevine: unknown } }>object).drm.widevine === "object" &&
-    (<{ drm: { widevine: object } }>object).drm.widevine.hasOwnProperty("url") &&
-    typeof (<{ drm: { widevine: { url: unknown } } }>object).drm.widevine.url === "string" &&
-    typeof (<{ drm: { widevine: { headers: unknown } } }>object).drm.widevine.headers === "object" &&
-    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
-      (key) =>
-        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
-        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
-          "string" &&
-        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
-          "Authorization" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
-        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
-    ) &&
-    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
-      (key) =>
-        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
-        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
-          "string" &&
-        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name === "UserId" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
-        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
-    ) &&
-    !!Object.keys((<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers).find(
-      (key) =>
-        typeof (<Record<string, unknown>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key] === "object" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("name") &&
-        typeof (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name ===
-          "string" &&
-        (<Record<string, { name: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].name === "D1" &&
-        (<Record<string, object>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].hasOwnProperty("value") &&
-        typeof (<Record<string, { value: unknown }>>(<{ drm: { widevine: { headers: object } } }>object).drm.widevine.headers)[key].value === "string"
-    )
-  );
+function calculateHToken(userId: string, iv: string, kid: string, client: string): string {
+  const d0c_format = "@%s@Dew#@WAK@%s@N1M@%s";
+  const d0c_output = format(d0c_format, client, kid, userId);
+  const encryptionKey = Buffer.from("0484032047dd341820aa19621bdc3459", "hex");
+  const cipher = createCipheriv("aes-128-cbc", encryptionKey, Buffer.from(iv, "ascii"));
+  let encrypted = cipher.update(d0c_output, "ascii", "base64");
+  encrypted += cipher.final("base64");
+  return encrypted;
 }
-
-type WakanimDrmMetadata = {
-  file: string;
-  drm: {
-    widevine: {
-      url: string;
-      headers: WakanimDrmMetadataHeaders;
-    };
-  };
-};
-
-type WakanimDrmMetadataHeaders = [
-  {
-    name: "Authorization";
-    value: string;
-  },
-  {
-    name: "UserId";
-    value: string;
-  },
-  {
-    name: "D1";
-    value: string;
-  }
-];
 
 export async function delay(time: number) {
   return new Promise((resolve) => setTimeout(resolve, time));
