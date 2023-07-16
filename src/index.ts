@@ -13,7 +13,7 @@ const program = new Command()
     writeOut: (string) => process.stderr.write(string),
     outputError: (str, write) => write(chalk.redBright(str))
   })
-  .version("-0.2.1", "-V --version")
+  .version("0.1.0", "-V --version")
   .addOption(new Option("-i --input <urls...>", "urls to parse and download").conflicts("interactive"))
   .addOption(new Option("-I --interactive", "enable interactive mode").conflicts(["input", "skipQuestions"]))
   .addOption(new Option("-v --verbose").conflicts("silent"))

@@ -18,7 +18,18 @@ import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
-import { ContainerDownload, Download, Downloader, EpisodeDownload, Extractor, isContainerDownload, Metadata, Output } from "./service.js";
+import {
+  ContainerDownload,
+  Download,
+  Downloader,
+  EpisodeDownload,
+  EpisodeMetadata,
+  Extractor,
+  isContainerDownload,
+  isContainerMetadata,
+  Metadata,
+  Output
+} from "./service.js";
 import AniwatchService from "./extractors/aniwatch.js";
 import FFMPEG from "./ffmpeg.js";
 import filenamify from "filenamify";
@@ -38,6 +49,8 @@ export default class App {
 
   private _downloaders: Downloader[];
   private _genericDownloader: Downloader;
+
+  private _cache: Record<string, KeyContainer[]> = {};
 
   constructor(config: Config) {
     this._config = config;
@@ -77,9 +90,7 @@ export default class App {
     } else {
       const inputs = this._config.input;
       if (!inputs?.length) {
-        throw new Error(
-          "you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive]."
-        );
+        throw new Error("you have to either specify one or multiple inputs with [-i | --input] or use the interactive mode with [-I --interactive].");
       }
       for (const input of inputs) {
         try {
@@ -98,27 +109,34 @@ export default class App {
     if (!metadata) {
       return;
     }
-    const download: Download | undefined = await this._download(metadata);
-    if (!download) {
-      return;
-    }
-    const drmFound = !!(
-      isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
-    ).filter((file) => file.encrypted).length;
-    this._logger.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
-    if (drmFound && !this._config.skipDrm) {
-      if (!(await this._decryptFiles(download))) {
+    if (!this._config.onlyDrm) {
+      const download: Download | undefined = await this._download(metadata);
+      if (!download) {
         return;
       }
-    }
-    const output = await this._handleMissingInformation(download);
-    await this._handleOutputs(output);
-    try {
-      if (!this._config.verbose) {
-        await this._removeTemporaryFiles(download);
+      const drmFound = !!(
+        isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
+      ).filter((file) => file.encrypted).length;
+      if (drmFound) {
+        this._logger.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
       }
-    } catch (error) {
-      this._logger.warn(undefined, "an error occurred while deleting temporary files");
+      if (drmFound && !this._config.skipDrm) {
+        if (!(await this._decryptFiles(download, this._cache))) {
+          return;
+        }
+      }
+      const output = await this._handleMissingInformation(download);
+      await this._handleOutputs(output);
+      try {
+        if (!this._config.verbose) {
+          await this._removeTemporaryFiles(download);
+        }
+      } catch (error) {
+        this._logger.warn(undefined, "an error occurred while deleting temporary files");
+      }
+    } else {
+      await this._collectDecryptionKeys(metadata, this._cache);
+      this._logger.jsonDump("INFO", undefined, this._cache);
     }
   }
   private async _removeTemporaryFiles(download: Download) {
@@ -308,7 +326,7 @@ export default class App {
         season = !!container ? 1 : null;
         this._logger.warn(
           undefined,
-          `you specified to skip questions but no we dont not in which season this episode is, using "${season}" for now`,
+          `you specified to skip questions but we dont know in which season this episode is, using "${season}" for now`,
           input.metadata.source.url
         );
       } else {
@@ -390,8 +408,47 @@ export default class App {
     }
   }
 
-  private async _decryptFiles(download: Download): Promise<boolean> {
-    const cache: Record<string, KeyContainer[]> = {};
+  private async _collectDecryptionKeys(metadata: Metadata, cache: Record<string, KeyContainer[]>): Promise<void> {
+    if (isContainerMetadata(metadata)) {
+      for (const episode of metadata.contents ?? <EpisodeMetadata[]>[]) {
+        await this._collectDecryptionKey(episode, cache);
+      }
+    } else {
+      await this._collectDecryptionKey(metadata, cache);
+    }
+    return;
+  }
+
+  private async _collectDecryptionKey(metadata: EpisodeMetadata, cache: Record<string, KeyContainer[]>): Promise<void> {
+    const licenseInformation = metadata.source.licenseInformation;
+    if (!licenseInformation) {
+      return;
+    }
+    const psshData = licenseInformation.psshData;
+    if (!psshData) {
+      return;
+    }
+    for (const format of Object.keys(psshData)) {
+      const pssh = psshData[format];
+      const keyContainers: KeyContainer[] =
+        cache[pssh.toString("base64")] ||
+        (await this._drm.solveDrm(
+          {
+            url: licenseInformation.url,
+            cookies: licenseInformation.cookies,
+            headers: licenseInformation.headers,
+            pssh
+          },
+          this._logger
+        ));
+      if (!cache[pssh.toString("base64")]) {
+        cache[pssh.toString("base64")] = keyContainers;
+      }
+    }
+    return;
+  }
+
+  private async _decryptFiles(download: Download, cache: Record<string, KeyContainer[]>): Promise<boolean> {
     if (isContainerDownload(download)) {
       for (const episode of download.contents ?? <EpisodeDownload[]>[]) {
         if (!(await this._decryptEpisode(episode, cache))) {
@@ -429,9 +486,9 @@ export default class App {
         return false;
       }
       if (!!cache[pssh.toString("base64")]) {
-        this._logger.debug(undefined, `pssh "${pssh.toString("base64")}" is cached and will be used`);
+        this._logger.debug(undefined, `key for pssh "${pssh.toString("base64")}" is cached and will be used`);
       } else {
-        this._logger.debug(undefined, `pssh "${pssh.toString("base64")}" is not cached and will be fetched`);
+        this._logger.debug(undefined, `key for pssh "${pssh.toString("base64")}" is not cached and will be fetched`);
       }
       const keyContainers: KeyContainer[] =
         cache[pssh.toString("base64")] ||
