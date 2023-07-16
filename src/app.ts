@@ -77,9 +77,7 @@ export default class App {
     } else {
       const inputs = this._config.input;
       if (!inputs?.length) {
-        throw new Error(
-          "you have to either specify one or multiple inputs with [-i | --input] or  use the interactive mode with [-I --interactive]."
-        );
+        throw new Error("you have to either specify one or multiple inputs with [-i | --input] or use the interactive mode with [-I --interactive].");
       }
       for (const input of inputs) {
         try {
