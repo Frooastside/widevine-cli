@@ -27,6 +27,7 @@ import {
   Extractor,
   isContainerDownload,
   isContainerMetadata,
+  isManifest,
   Metadata,
   Output
 } from "./service.js";
@@ -214,7 +215,7 @@ export default class App {
         this._logger.warn(
           undefined,
           `you specified to skip questions but no title was found, using "${container}" for now`,
-          input.metadata.source.url
+          isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
       }
       const outputs: Output[] = [];
@@ -222,7 +223,11 @@ export default class App {
         let title = await this._title(episode.metadata.title, false);
         if (!title) {
           title = uuidv4();
-          this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
+          this._logger.warn(
+            undefined,
+            `you specified to skip questions but no title was found, using "${title}" for now`,
+            isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
+          );
         }
         const index = await this._index(episode, input);
         const season = await this._season(episode, input);
@@ -253,7 +258,11 @@ export default class App {
       let title = await this._title(input.metadata.title, false);
       if (!title) {
         title = uuidv4();
-        this._logger.warn(undefined, `you specified to skip questions but no title was found, using "${title}" for now`, input.metadata.source.url);
+        this._logger.warn(
+          undefined,
+          `you specified to skip questions but no title was found, using "${title}" for now`,
+          isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
+        );
       }
       const index = await this._index(input);
       const season = await this._season(input);
@@ -303,7 +312,7 @@ export default class App {
         this._logger.warn(
           undefined,
           `you specified to skip questions but no episode index was found, using "${index}" for now`,
-          input.metadata.source.url
+          isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
       } else {
         const response = await enquirer.prompt<{ index: string }>({
@@ -327,7 +336,7 @@ export default class App {
         this._logger.warn(
           undefined,
           `you specified to skip questions but we dont know in which season this episode is, using "${season}" for now`,
-          input.metadata.source.url
+          isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
       } else {
         const response = await enquirer.prompt<{ season: string }>({
@@ -377,7 +386,7 @@ export default class App {
 
   private async _download(metadata: Metadata): Promise<Download | undefined> {
     let responsibleDownloader = this._downloaders.find((extractor) =>
-      extractor.checkResponsibility(metadata.source.manifest?.url ?? metadata.source.url)
+      extractor.checkResponsibility(isManifest(metadata.source) ? metadata.source.url : metadata.source)
     );
     if (!responsibleDownloader) {
       this._logger.debug(undefined, "there was no matching download provider, using the generic one.");
@@ -420,7 +429,7 @@ export default class App {
   }
 
   private async _collectDecryptionKey(metadata: EpisodeMetadata, cache: Record<string, KeyContainer[]>): Promise<void> {
-    const licenseInformation = metadata.source.licenseInformation;
+    const licenseInformation = metadata.licenseInformation;
     if (!licenseInformation) {
       return;
     }
@@ -464,7 +473,7 @@ export default class App {
   }
 
   private async _decryptEpisode(episode: EpisodeDownload, cache: Record<string, KeyContainer[]>): Promise<boolean> {
-    const licenseInformation = episode.metadata.source.licenseInformation;
+    const licenseInformation = episode.metadata.licenseInformation;
     if (!licenseInformation) {
       this._handleError(undefined, "DRM protected content was downloaded but there is no license information");
       return false;

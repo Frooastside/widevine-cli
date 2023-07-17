@@ -12,6 +12,7 @@ import {
   EpisodeDownload,
   EpisodeMetadata,
   isContainerMetadata,
+  isManifest,
   Metadata
 } from "../service.js";
 import { writeFileSync } from "fs";
@@ -50,14 +51,14 @@ export default class YT_DLP_Downloader extends Downloader {
         type: "container",
         metadata: metadata
       };
-      if (metadata.source.manifest?.cleanup) {
-        metadata.source.manifest?.cleanup();
+      if (isManifest(metadata.source) && metadata.source.cleanup) {
+        metadata.source?.cleanup();
       }
       return containerDownload;
     } else {
       const episode = await this._downloadEpisode(metadata);
-      if (metadata.source.manifest?.cleanup) {
-        metadata.source.manifest?.cleanup();
+      if (isManifest(metadata.source) && metadata.source.cleanup) {
+        metadata.source?.cleanup();
       }
       return episode;
     }
@@ -65,8 +66,7 @@ export default class YT_DLP_Downloader extends Downloader {
 
   private async _downloadEpisode(metadata: EpisodeMetadata): Promise<EpisodeDownload> {
     const fileId = uuidv4();
-    const manifest = metadata.source.manifest;
-    const fetchedDownloadMetadata = await fetchDownloadMetadata(!!manifest ? manifest.url : metadata.source.url, fileId);
+    const fetchedDownloadMetadata = await fetchDownloadMetadata(isManifest(metadata.source) ? metadata.source.url : metadata.source, fileId);
     if (!fetchedDownloadMetadata) {
       throw new Error("an error occurred while fetching the metadata");
     }
@@ -75,7 +75,10 @@ export default class YT_DLP_Downloader extends Downloader {
       throw new Error("Episodes can't be playlists at the same time");
     }
 
-    this._logger.information(this.name, `Start downloading "${metadata.title ? metadata.title : metadata.source.url}"`);
+    this._logger.information(
+      this.name,
+      `Start downloading "${metadata.title ? metadata.title : isManifest(metadata.source) ? metadata.source.url : metadata.source}"`
+    );
     if (this._config.verbose) {
       const scriptId = uuidv4();
       writeFileSync(`security/yt-dlp-fetched-metadata-${scriptId}.json`, JSON.stringify(fetchedDownloadMetadata, null, 2));

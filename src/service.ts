@@ -79,7 +79,12 @@ export type Metadata = ContainerMetadata | EpisodeMetadata;
 interface MetadataBase {
   type: DataType;
   title?: string;
-  source: Source;
+  source: string | Manifest;
+  licenseInformation?: LicenseInformation;
+}
+
+export function isManifest(source: string | Manifest): source is Manifest {
+  return typeof source === "object" && typeof source.url === "string";
 }
 
 export interface ContainerMetadata extends MetadataBase {
@@ -95,12 +100,6 @@ export interface EpisodeMetadata extends MetadataBase {
 }
 
 export type DataType = "container" | "episode";
-
-export type Source = {
-  url?: string;
-  manifest?: Manifest;
-  licenseInformation?: LicenseInformation;
-};
 
 export type Manifest = {
   url: string;
