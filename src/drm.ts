@@ -1,15 +1,15 @@
 import cookie from "cookie";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { existsSync, readFileSync, rm as rawRm, writeFileSync } from "fs";
+import { existsSync, rm as rawRm, readFileSync, writeFileSync } from "fs";
 import fetch from "node-fetch";
 import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
 import { promisify } from "util";
+import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Cookie } from "./cookie-parser";
 import { Config } from "./index.js";
 import { Logger } from "./io.js";
 import { DownloadedFile } from "./service.js";
-import { v4 as uuidv4 } from "uuid";
 
 const rm = promisify(rawRm);
 

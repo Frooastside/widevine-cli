@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { writeFileSync } from "fs";
 import ProgressBar from "progress";
 import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
@@ -15,7 +16,6 @@ import {
   isManifest,
   Metadata
 } from "../service.js";
-import { writeFileSync } from "fs";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 

@@ -1,13 +1,9 @@
-import { writeFileSync } from "fs";
-import { v4 as uuidv4 } from "uuid";
-import { Config } from "../index.js";
-import { Logger } from "../io.js";
-import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 import { load } from "cheerio";
 import CryptoJS from "crypto-js";
 import { Deobfuscator } from "deobfuscator";
+import { writeFileSync } from "fs";
 import * as meriyah from "meriyah";
-import { walkTree } from "../extractor.js";
+import { v4 as uuidv4 } from "uuid";
 import {
   isArrowFunctionExpression,
   isBlockStatement,
@@ -17,8 +13,12 @@ import {
   isMemberExpression,
   isReturnStatement,
   isTryStatement,
-  isVariableDeclaration
+  isVariableDeclaration,
+  walkTree
 } from "../extractor.js";
+import { Config } from "../index.js";
+import { Logger } from "../io.js";
+import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 
 export interface ContainerData {
   page: string;

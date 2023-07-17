@@ -1,7 +1,10 @@
 import enquirer from "enquirer";
+import filenamify from "filenamify";
 import { existsSync, rm as rawRm } from "fs";
+import { copyFile, mkdir } from "fs/promises";
 import { Holz } from "holz-provider";
 import { KeyContainer } from "node-widevine";
+import { basename, dirname, extname } from "path";
 import { exit } from "process";
 import puppeteer from "puppeteer-extra";
 import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
@@ -14,8 +17,10 @@ import { v4 as uuidv4 } from "uuid";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
 import DrmSolver from "./drm.js";
+import AniwatchService from "./extractors/aniwatch.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
+import FFMPEG from "./ffmpeg.js";
 import { Config } from "./index.js";
 import { Input, Logger } from "./io.js";
 import {
@@ -25,17 +30,12 @@ import {
   EpisodeDownload,
   EpisodeMetadata,
   Extractor,
+  Metadata,
+  Output,
   isContainerDownload,
   isContainerMetadata,
-  isManifest,
-  Metadata,
-  Output
+  isManifest
 } from "./service.js";
-import AniwatchService from "./extractors/aniwatch.js";
-import FFMPEG from "./ffmpeg.js";
-import filenamify from "filenamify";
-import { basename, dirname, extname } from "path";
-import { copyFile, mkdir } from "fs/promises";
 
 const rm = promisify(rawRm);
 
