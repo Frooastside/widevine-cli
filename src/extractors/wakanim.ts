@@ -1,26 +1,17 @@
+import { createCipheriv } from "crypto";
 import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
 import { exit } from "process";
+import { URL } from "url";
+import { format } from "util";
 import { v4 as uuidv4, validate } from "uuid";
 import { extractPsshData } from "../drm.js";
 import { Config } from "../index.js";
 import { Logger } from "../io.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
-import { URL } from "url";
-import { createCipheriv } from "crypto";
-import { format } from "util";
 
-type WakanimSeason = {
-  idSeason: number;
-  episodes: WakanimEpisode[];
-};
-
-type WakanimEpisode = {
-  id: number;
-  title: string;
-  numero: number;
-};
+import { wakanim_api, wakanim_core } from "wakanim-api";
 
 export default class WakanimService extends Extractor {
   private _config: Config;
@@ -134,7 +125,8 @@ export default class WakanimService extends Extractor {
       if (!loginResponse.ok) {
         throw new Error("an error occurred while trying to log in", { cause: loginResponse.statusText });
       }
-      const loginInformation = await loginResponse.json();
+      const loginInformation: wakanim_core.paths["/connect/token"]["post"]["responses"]["200"]["content"]["application/json"] =
+        await loginResponse.json();
       this._accessToken = loginInformation.access_token;
       if (this._config.verbose) {
         this._logger.debug(this.name, "access token", this._accessToken);
@@ -166,7 +158,8 @@ export default class WakanimService extends Extractor {
       if (!loginResponse.ok) {
         throw new Error("an error occurred while trying to log in", { cause: loginResponse.statusText });
       }
-      const loginInformation = await loginResponse.json();
+      const loginInformation: wakanim_core.paths["/connect/token"]["post"]["responses"]["200"]["content"]["application/json"] =
+        await loginResponse.json();
       this._accessToken = loginInformation.access_token;
       if (this._config.verbose) {
         this._logger.debug(this.name, "access token", this._accessToken);
@@ -186,9 +179,10 @@ export default class WakanimService extends Extractor {
     if (!userInformationResponse.ok) {
       return false;
     }
-    const userInformation = await userInformationResponse.json();
+    const userInformation: wakanim_api.paths["/user"]["get"]["responses"]["200"]["content"]["application/json"] =
+      await userInformationResponse.json();
     this._premiumAccess = !!userInformation.accountType;
-    this._userId = userInformation.public.userId;
+    this._userId = userInformation.public?.userId;
     return true;
   }
 
@@ -207,16 +201,19 @@ export default class WakanimService extends Extractor {
       const showId = regexResult[2];
       const seasonId = regexResult[4];
 
-      const showInformation = await this._fetchShowInformation(showId, this._accessToken);
-
-      const episodes = showInformation.seasons
-        .filter((season: { idSeason: number }) => (seasonId ? `${season.idSeason}` : true))
-        .flatMap((season: WakanimSeason) => season.episodes);
+      const showInformation: wakanim_api.Show = await this._fetchShowInformation(showId, this._accessToken);
+      if (!showInformation.seasons) {
+        throw new Error("an error occurred while fetching the show information, no seasons available");
+      }
+      const episodes = showInformation.seasons.filter((season) => (seasonId ? `${season.idSeason}` : true)).flatMap((season) => season.episodes);
 
       const episodeMetadataList: EpisodeMetadata[] = [];
       for (const episode of episodes) {
         try {
-          const episodeMetadata = await this._fetchEpisodeMetadata(episode.id);
+          if (!episode) {
+            continue;
+          }
+          const episodeMetadata = await this._fetchEpisodeMetadata(`${episode.id}`);
           if (!episodeMetadata) {
             throw new Error(`got empty episode metadata from "${url}"`);
           }
@@ -274,8 +271,10 @@ export default class WakanimService extends Extractor {
       throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
     }
     try {
-      const streamInformation = await this._fetchStreamInformation(episodeId, this._accessToken);
-
+      const streamInformation: wakanim_api.Episode = await this._fetchStreamInformation(episodeId, this._accessToken);
+      if (!streamInformation.episodeFreeStreaming) {
+        throw new Error("an error occurred while fetching the stream information");
+      }
       const manifestUrl = new URL(streamInformation.episodeFreeStreaming);
       const kid = manifestUrl.searchParams.get("kid");
       const token = manifestUrl.searchParams.get("token");
@@ -305,8 +304,9 @@ export default class WakanimService extends Extractor {
         throw new Error("an error occurred while parsing the manifest");
       }
       const episodeIndex = streamInformation.numero;
-      const seasonIndex = this._parseShortSeason(streamInformation.season.shortName);
-      const container = streamInformation.show.name;
+      const seasonIndex =
+        streamInformation.season && streamInformation.season.shortName ? this._parseShortSeason(streamInformation.season.shortName) : null;
+      const container = streamInformation.show && streamInformation.show.name ? streamInformation.show.name : null;
       const title = streamInformation.title;
 
       const manifestId = uuidv4();
@@ -358,7 +358,7 @@ export default class WakanimService extends Extractor {
     return season;
   }
 
-  private async _fetchShowInformation(showId: string, accessToken: string) {
+  private async _fetchShowInformation(showId: string, accessToken: string): Promise<wakanim_api.Show> {
     const showInformationResponse = await fetch(`https://account.wakanim.tv/api/catalogue/show?Id=${showId}`, {
       method: "GET",
       headers: {
@@ -373,14 +373,14 @@ export default class WakanimService extends Extractor {
     if (!showInformationResponse.ok) {
       throw new Error("an error occurred while fetching the show information");
     }
-    const showInformation = await showInformationResponse.json();
+    const showInformation: wakanim_api.Show = await showInformationResponse.json();
     if (this._config.verbose) {
       writeFileSync(`wakanim-show-${uuidv4()}.json`, JSON.stringify(showInformation, null, 2));
     }
     return showInformation;
   }
 
-  private async _fetchStreamInformation(episodeId: string, accessToken: string) {
+  private async _fetchStreamInformation(episodeId: string, accessToken: string): Promise<wakanim_api.Episode> {
     const streamInformationResponse = await fetch(`https://account.wakanim.tv/api/catalogue/episodestreamingfree?Id=${episodeId}`, {
       method: "GET",
       headers: {
@@ -396,7 +396,7 @@ export default class WakanimService extends Extractor {
     if (!streamInformationResponse.ok) {
       throw new Error("an error occurred while fetching the stream information");
     }
-    const streamInformation = await streamInformationResponse.json();
+    const streamInformation: wakanim_api.Episode = await streamInformationResponse.json();
     if (this._config.verbose) {
       writeFileSync(`wakanim-stream-${uuidv4()}.json`, JSON.stringify(streamInformation, null, 2));
     }
