@@ -261,7 +261,7 @@ export default class WakanimService extends Extractor {
         throw new Error("an error occurred while extracting the season id");
       }
       const episodeId = regexResult[2];
-      return await this._fetchEpisodeMetadata(episodeId, url);
+      return await this._fetchEpisodeMetadata(episodeId);
     } catch (error) {
       this._logger.debug(this.name, error, (<Error>error)?.stack);
       this._logger.error(this.name, error);
@@ -269,7 +269,7 @@ export default class WakanimService extends Extractor {
     }
   }
 
-  private async _fetchEpisodeMetadata(episodeId: string, url?: string): Promise<EpisodeMetadata | null> {
+  private async _fetchEpisodeMetadata(episodeId: string): Promise<EpisodeMetadata | null> {
     if (!this._accessToken || !this._userId) {
       throw new Error("Wakanim requires to be logged in supply credentials with --credentials or use a refresh token with --refresh-token");
     }
@@ -320,27 +320,24 @@ export default class WakanimService extends Extractor {
         season: !!seasonIndex ? Number(seasonIndex) : undefined,
         index: !!episodeIndex ? Number(episodeIndex) : undefined,
         source: {
-          url: url,
-          manifest: {
-            url: `${this._koaAddress}/${manifestId}`,
-            cleanup: () => this._removeManifest(manifestId)
+          url: `${this._koaAddress}/${manifestId}`,
+          cleanup: () => this._removeManifest(manifestId)
+        },
+        licenseInformation: {
+          url: `https://app-api.wakanim.tv/api/key/widevineapp?kid=${kid}`,
+          headers: {
+            "User-Agent": this._playerUserAgent,
+            Authorization: token,
+            "X-DeviceType": "Google",
+            "X-Player": "2",
+            "X-SoftwareVersion": "12 S",
+            "X-AppVersion": "7.1.0",
+            "X-DeviceVersion": "sdk_gphone64_x86_64",
+            "X-HToken-Forge": forge,
+            "X-HToken": calculateHToken(this._userId, forge, kid, "wakanim.android.test2"),
+            "Content-Type": "application/octet-stream"
           },
-          licenseInformation: {
-            url: `https://app-api.wakanim.tv/api/key/widevineapp?kid=${kid}`,
-            headers: {
-              "User-Agent": this._playerUserAgent,
-              Authorization: token,
-              "X-DeviceType": "Google",
-              "X-Player": "2",
-              "X-SoftwareVersion": "12 S",
-              "X-AppVersion": "7.1.0",
-              "X-DeviceVersion": "sdk_gphone64_x86_64",
-              "X-HToken-Forge": forge,
-              "X-HToken": calculateHToken(this._userId, forge, kid, "wakanim.android.test2"),
-              "Content-Type": "application/octet-stream"
-            },
-            psshData: psshData
-          }
+          psshData: psshData
         }
       };
       return metadata;
