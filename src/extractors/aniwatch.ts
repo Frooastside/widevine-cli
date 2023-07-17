@@ -53,7 +53,7 @@ export default class AniwatchService extends Extractor {
   }
 
   async fetchMetadata(url: string): Promise<Metadata | null> {
-    if (/^(https?:)\/\/(www\.)?aniwatch\.to\/watch\/([a-z0-9]+\-)+([0-9]+)(\?ep=([0-9]+))/gi.test(url) /* https://regex101.com/r/ChlN5x/1 */) {
+    if (/^(https?:)\/\/(www\.)?aniwatch\.to\/watch\/([a-z0-9]+\-)+([0-9]+)(\?ep=([0-9]+))/gi.test(url) /* https://regex101.com/r/ChlN5x/4 */) {
       return await this._fetchEpisodeMetadataFromUrl(url);
     } else if (/^(https?:)\/\/(www\.)?aniwatch\.to\/(watch\/)?([a-z0-9]+\-)+([0-9]+)$/gi.test(url) /* https://regex101.com/r/kVwqQC/1 */) {
       return await this._fetchSeasonMetadata(url);
