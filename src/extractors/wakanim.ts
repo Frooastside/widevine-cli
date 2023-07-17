@@ -317,7 +317,7 @@ export default class WakanimService extends Extractor {
         type: "episode",
         title: title,
         container: container,
-        season: !!seasonIndex ? Number(seasonIndex) : undefined,
+        season: seasonIndex,
         index: !!episodeIndex ? Number(episodeIndex) : undefined,
         source: {
           url: `${this._koaAddress}/${manifestId}`,
@@ -349,7 +349,7 @@ export default class WakanimService extends Extractor {
   }
 
   private _parseShortSeason(shortName: string): number | null {
-    const regex = /^(S([0-9]))?(A([0-9]))?$/gi.exec(shortName);
+    const regex = /^(S([0-9]+))?(A([0-9]+))?$/gi.exec(shortName);
     if (!regex) {
       return null;
     }
