@@ -6,13 +6,12 @@ import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
 import { promisify } from "util";
 import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Cookie } from "./cookie-parser.js";
-import { DownloadConfig } from "./index.js";
+import { DownloadConfig, globalConfig } from "./index.js";
 import { Logger } from "./io.js";
 import { DownloadedFile } from "./service.js";
 
 const rm = promisify(rawRm);
 const binaryExecutor = new BinaryExecutor("shaka-packager");
-const logger = new Logger("DRM Solver");
 
 export type LicenseInformation = {
   url: string;
@@ -68,6 +67,8 @@ export default class DrmSolver {
   private _useLocal: boolean;
   private _localContentDecryptionModule: ContentDecryptionModule | null;
 
+  private _logger: Logger = new Logger("DRM Solver", globalConfig);
+
   constructor(config: DownloadConfig) {
     this._useLocal =
       ((existsSync("security/device_private_key") && existsSync("security/device_client_id_blob")) || !!config.forceLocalDrm) &&
@@ -107,20 +108,20 @@ export default class DrmSolver {
     }
 
     if (this._localContentDecryptionModule) {
-      logger.extraInformation("trying local cdm first");
+      this._logger.extraInformation("trying local cdm first");
       try {
-        return await this._solveLocalDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
+        return await this._solveLocalDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, headers);
       } catch (error) {
-        logger.extraInformation("local cdm failed, try remote", error);
-        return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
+        this._logger.extraInformation("local cdm failed, try remote", error);
+        return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, headers);
       }
     } else {
-      logger.extraInformation("skipping local cdm");
-      return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, logger, headers);
+      this._logger.extraInformation("skipping local cdm");
+      return await this._solveRemoteDrm(licenseRequestInformation.url, licenseRequestInformation.pssh, headers);
     }
   }
 
-  private async _solveLocalDrm(url: string, pssh: Buffer, logger: Logger, headers?: HeadersInit): Promise<KeyContainer[]> {
+  private async _solveLocalDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
     if (!this._localContentDecryptionModule) {
       throw new Error("local cdm was disabled but you want to use it anyway");
     }
@@ -132,13 +133,13 @@ export default class DrmSolver {
       headers: headers
     });
     if (!response.ok) {
-      logger.error(response.statusText, await response.json());
+      this._logger.error(response.statusText, await response.json());
       throw new Error(response.statusText, { cause: response.json() });
     }
     return session.parseLicense(Buffer.from(await response.arrayBuffer())).filter((key) => key.kid !== "1");
   }
 
-  private async _solveRemoteDrm(url: string, pssh: Buffer, logger: Logger, headers?: HeadersInit): Promise<KeyContainer[]> {
+  private async _solveRemoteDrm(url: string, pssh: Buffer, headers?: HeadersInit): Promise<KeyContainer[]> {
     const response = await fetch("https://cdrm-project.com/api", {
       method: "POST",
       body: JSON.stringify({

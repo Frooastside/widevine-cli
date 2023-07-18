@@ -7,7 +7,8 @@ if (!existsSync("dist")) {
 }
 
 try {
-  await (await import("./dist/install.js")).installDependencies();
+  const installer = await import("./dist/install.js");
+  await installer.installDependencies();
 } catch (error) {
   console.error(error);
   exit(1);

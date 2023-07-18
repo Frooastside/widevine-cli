@@ -55,7 +55,7 @@ export default class App {
 
   constructor(config: DownloadConfig) {
     this._config = config;
-    this._logger = new Logger("wvcli");
+    this._logger = new Logger("wvcli", globalConfig);
     this._io = new Input();
     this._drm = new DrmSolver(config);
 
@@ -129,7 +129,7 @@ export default class App {
       const output = await this._handleMissingInformation(download);
       await this._handleOutputs(output);
       try {
-        if (this._config.keepTemporaryFiles) {
+        if (!this._config.keepTemporaryFiles) {
           await this._removeTemporaryFiles(download);
         }
       } catch (error) {
@@ -163,10 +163,10 @@ export default class App {
   private async _handleOutputs(output: Output | Output[]) {
     if (Array.isArray(output)) {
       for (const singleOutput of output) {
-        this._handleOutput(singleOutput);
+        await this._handleOutput(singleOutput);
       }
     } else {
-      this._handleOutput(output);
+      await this._handleOutput(output);
     }
   }
 
@@ -183,14 +183,14 @@ export default class App {
     const outputPath = this._config.output
       .replaceAll("{title}", `${title}`)
       .replaceAll("{series_name}", `${container}`)
-      .replaceAll("{season_number}", `${seasonNumber}`)
-      .replaceAll("{episode_number}", `${episodeNumber}`);
+      .replaceAll("{season_number}", `${seasonNumber.toString().padStart(2, "0")}`)
+      .replaceAll("{episode_number}", `${episodeNumber.toString().padStart(2, "0")}`);
     const directoryPath = dirname(outputPath);
 
     if (useDirectoryAsOutput) {
       await mkdir(directoryPath, { recursive: true });
       if (combineFiles) {
-        ffmpeg.combineFiles(output.files, `${directoryPath}/${title}.mkv`);
+        await ffmpeg.combineFiles(output.files, `${directoryPath}/${title}.mkv`);
       } else {
         for (const file of output.files) {
           let filePath = `${directoryPath}/${title}.${extname(file)}`;
@@ -204,7 +204,7 @@ export default class App {
       const filePath = basename(outputPath);
       await mkdir(directoryPath, { recursive: true });
       if (combineFiles || !filePath.includes("{ext}")) {
-        ffmpeg.combineFiles(output.files, `${directoryPath}/${filePath.includes("{ext}") ? filePath.replaceAll("{ext}", "mkv") : filePath}`);
+        await ffmpeg.combineFiles(output.files, `${directoryPath}/${filePath.includes("{ext}") ? filePath.replaceAll("{ext}", "mkv") : filePath}`);
       } else {
         for (const file of output.files) {
           await copyFile(file, `${directoryPath}/${filePath.replaceAll("{ext}", extname(file))}`);

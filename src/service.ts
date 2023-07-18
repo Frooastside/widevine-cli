@@ -1,5 +1,6 @@
 import { Cookie } from "./cookie-parser.js";
 import { LicenseInformation } from "./drm.js";
+import { globalConfig } from "./index.js";
 import { Logger } from "./io.js";
 
 export abstract class Extractor {
@@ -12,7 +13,7 @@ export abstract class Extractor {
   abstract get version(): string;
   get logger(): Logger {
     if (!this._logger) {
-      this._logger = new Logger(this.name);
+      this._logger = new Logger(this.name, globalConfig);
     }
     return this._logger;
   }
@@ -31,7 +32,7 @@ export abstract class Downloader {
   abstract get version(): string;
   get logger(): Logger {
     if (!this._logger) {
-      this._logger = new Logger(this.name);
+      this._logger = new Logger(this.name, globalConfig);
     }
     return this._logger;
   }

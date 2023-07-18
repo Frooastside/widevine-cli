@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import readline, { Interface } from "node:readline/promises";
 import { format } from "util";
 import { v4 as uuidv4 } from "uuid";
-import { globalConfig } from "./index.js";
 
 export class Input {
   private _input: Interface;
@@ -21,22 +20,30 @@ export class Input {
   }
 }
 
+export type LoggerConfig = { silent?: boolean; verbose?: boolean; debug?: boolean };
+
 export class Logger {
   private _baseComponent: string;
+  private _silent?: boolean;
+  private _verbose?: boolean;
+  private _debug?: boolean;
 
-  constructor(baseComponent: string) {
+  constructor(baseComponent: string, config?: LoggerConfig) {
     this._baseComponent = baseComponent;
+    this._silent = !!config?.silent;
+    this._verbose = !!config?.verbose;
+    this._debug = !!config?.debug;
   }
 
   information(...objects: unknown[]) {
-    if (globalConfig.silent) {
+    if (this._silent) {
       return;
     }
     process.stderr.write(this.format("INFO", false, objects.join(", ")).concat("\n"));
   }
 
   extraInformation(...objects: unknown[]) {
-    if (!globalConfig.verbose && !globalConfig.debug) {
+    if (!this._verbose && !this._debug) {
       return;
     }
     process.stderr.write(this.format("INFO", false, objects.join(", ")).concat("\n"));
@@ -51,21 +58,21 @@ export class Logger {
   }
 
   debug(...objects: unknown[]) {
-    if (!globalConfig.debug) {
+    if (!this._debug) {
       return;
     }
     process.stderr.write(this.format("DEBUG", false, objects.join(", ")).concat("\n"));
   }
 
   debugJsonDump(object: unknown) {
-    if (!globalConfig.debug) {
+    if (!this._debug) {
       return;
     }
     process.stderr.write(this.format("DEBUG", false, JSON.stringify(object)).concat("\n"));
   }
 
   debugFileDump(filename: string, extension: string, fileContents: string | NodeJS.ArrayBufferView) {
-    if (!globalConfig.debug) {
+    if (!this._debug) {
       return;
     }
     if (!existsSync("security/")) {
@@ -76,7 +83,7 @@ export class Logger {
 
   format(level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
     const date = new Date();
-    const dateString = chalk.greenBright(`${date.toLocaleTimeString()},${date.getMilliseconds()}`);
+    const dateString = chalk.greenBright(`${date.toLocaleTimeString()},${date.getMilliseconds().toString().padStart(3, "0")}`);
     const componentString = chalk.blue(this._baseComponent);
     const color = this._color(level);
     return input

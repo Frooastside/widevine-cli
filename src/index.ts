@@ -59,7 +59,7 @@ function initializeGlobalConfig() {
 
 function install() {
   initializeGlobalConfig();
-  installDependencies();
+  void installDependencies();
 }
 
 function download(_args: unknown, command: Command) {
@@ -76,7 +76,7 @@ function download(_args: unknown, command: Command) {
   const app = new App(downloadConfig);
 
   try {
-    app.start().then(() => app.release());
+    void app.start().then(() => app.release());
   } catch (error) {
     program.error((error as Error)?.message);
     app.release();

@@ -12,6 +12,7 @@ import tar from "tar-stream";
 import { URL } from "url";
 import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
 import { Logger } from "./io.js";
+import chalk from "chalk";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-07-16-git-c541ecf0dc";
@@ -67,7 +68,7 @@ const logger = new Logger("Installer");
 
 export async function installDependencies() {
   platform = detectPlatform();
-  checkBin();
+  await checkBin();
   logger.information(`Downloading dependencies for Platform "${platform}"`);
   try {
     await installFFMPEG();
@@ -168,13 +169,20 @@ async function checkBin() {
   }
 }
 
-function createProgressBar(product: Product): ProgressBar {
-  return new ProgressBar(`Downloading ${product} :elapseds [:bar] :percent :progress/:sizemb ETA: :etas`, {
-    total: 0,
-    width: 20,
-    complete: "#",
-    incomplete: " "
-  });
+function createProgressBar(product: Product) {
+  return new ProgressBar(
+    logger.format(
+      "INFO",
+      false,
+      `Downloading "${product}" :elapseds [:bar] ${chalk.blue(":percent")} :progress/:sizeMiB ETA: ${chalk.yellow(":etas")}`
+    ),
+    {
+      total: 0,
+      width: 20,
+      complete: "#",
+      incomplete: " "
+    }
+  );
 }
 
 function canDownload(url: URL): Promise<boolean> {
@@ -226,7 +234,6 @@ function _downloadFile(url: URL, destinationPath: string, progressBar?: Progress
             case "directory":
               mkdirSync(`${destinationPath}/${headers.name}`);
               return next();
-              break;
             default:
               logger.warn(`skipping entry "${headers.name}" with type "${headers.type}"`);
               stream.resume();
