@@ -25,7 +25,10 @@
   "type": "module",
   "pkg": {
     "scripts": "build/**/*.js",
-    "target": "node18"
+    "target": "node18",
+    "assets": [
+      "./node_modules/lzma-native/**"
+    ]
   },
   "scripts": {
     "start": "pnpm start:wakanim:episode",

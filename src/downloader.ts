@@ -129,7 +129,7 @@ export default class App {
       const output = await this._handleMissingInformation(download);
       await this._handleOutputs(output);
       try {
-        if (!globalConfig.verbose) {
+        if (this._config.keepTemporaryFiles) {
           await this._removeTemporaryFiles(download);
         }
       } catch (error) {

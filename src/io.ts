@@ -58,10 +58,20 @@ export class Logger {
   }
 
   debugJsonDump(object: unknown) {
-    if (!globalConfig.verbose) {
+    if (!globalConfig.debug) {
       return;
     }
     process.stderr.write(this.format("DEBUG", false, JSON.stringify(object)).concat("\n"));
+  }
+
+  debugFileDump(filename: string, extension: string, fileContents: string | NodeJS.ArrayBufferView) {
+    if (!globalConfig.debug) {
+      return;
+    }
+    if (!existsSync("security/")) {
+      mkdirSync("security/");
+    }
+    writeFileSync(`security/${filename}-${uuidv4()}.${extension}`, fileContents);
   }
 
   format(level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
@@ -72,13 +82,6 @@ export class Logger {
     return input
       ? format("[%s] %s (%s): ", componentString, color(level), text)
       : format("[%s] %s (%s): %s ", dateString, componentString, color(level), text);
-  }
-
-  debugFileDump(filename: string, extension: string, fileContents: string | NodeJS.ArrayBufferView) {
-    if (!existsSync("security/")) {
-      mkdirSync("security/");
-    }
-    writeFileSync(`security/${filename}-${uuidv4()}.${extension}`, fileContents);
   }
 
   private _color(level: "DEBUG" | "INFO" | "WARNING" | "ERROR"): typeof chalk.red {

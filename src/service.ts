@@ -1,6 +1,6 @@
-import { Cookie } from "./cookie-parser";
-import { LicenseInformation } from "./drm";
-import { Logger } from "./io";
+import { Cookie } from "./cookie-parser.js";
+import { LicenseInformation } from "./drm.js";
+import { Logger } from "./io.js";
 
 export abstract class Extractor {
   private _logger?: Logger;

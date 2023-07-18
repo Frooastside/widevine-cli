@@ -6,9 +6,9 @@ import { installDependencies } from "./install.js";
 
 dotenv.config();
 
-/*console.log = () => {};
+console.log = () => {};
 console.error = () => {};
-console.warn = () => {};*/
+console.warn = () => {};
 
 export type GlobalConfig = ReturnType<typeof program.opts>;
 export type DownloadConfig = ReturnType<typeof downloadCommand.opts>;
@@ -34,7 +34,8 @@ const downloadCommand = new Command("download")
   .addOption(new Option("   --chrome-channel <channel>").choices(["chrome", "chrome-beta", "chrome-dev", "chrome-canary"]).default("chrome"))
   .addOption(new Option("   --chrome-unsecure"))
   .addOption(new Option("   --chrome-load-cookies"))
-  .addOption(new Option("-N --concurrent-fragments <threads>").default(1).argParser((string) => Number(string ?? "1")));
+  .addOption(new Option("-N --concurrent-fragments <threads>").default(1).argParser((string) => Number(string ?? "1")))
+  .addOption(new Option("   --keep-temporary-files"));
 
 const program = new Command()
   .configureOutput({
@@ -50,17 +51,15 @@ const program = new Command()
   .addCommand(installCommand)
   .addCommand(downloadCommand);
 
-await program.parseAsync(process.argv);
-
-console.warn("done parsing");
+program.parse(process.argv);
 
 function initializeGlobalConfig() {
   globalConfig = program.opts() as GlobalConfig;
 }
 
-async function install() {
+function install() {
   initializeGlobalConfig();
-  await installDependencies();
+  installDependencies();
 }
 
 function download(_args: unknown, command: Command) {

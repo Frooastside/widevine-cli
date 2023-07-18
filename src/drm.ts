@@ -5,7 +5,7 @@ import fetch from "node-fetch";
 import { ContentDecryptionModule, KeyContainer, Session } from "node-widevine";
 import { promisify } from "util";
 import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
-import { Cookie } from "./cookie-parser";
+import { Cookie } from "./cookie-parser.js";
 import { DownloadConfig } from "./index.js";
 import { Logger } from "./io.js";
 import { DownloadedFile } from "./service.js";

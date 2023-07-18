@@ -2,7 +2,7 @@ import { equal, ok } from "assert";
 import { existsSync } from "fs";
 import { describe } from "mocha";
 import DrmSolver from "../dist/drm.js";
-import { Config } from "../dist/index.js";
+import { DownloadConfig } from "../dist/index.js";
 
 const pssh = Buffer.from(
   "AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==",
@@ -13,7 +13,13 @@ const licenseUrl = "https://cwip-shaka-proxy.appspot.com/no_auth";
 describe("DRM Solver Tests", () => {
   if (existsSync("./security/device_private_key") && existsSync("./security/device_client_id_blob")) {
     it("Should return a list of keys using the local content decryption module", async () => {
-      const config: Config = { onlyDrm: true, forceLocalDrm: true };
+      const config: DownloadConfig = {
+        onlyDrm: true,
+        forceLocalDrm: true,
+        output: "",
+        chromeChannel: "",
+        concurrentFragments: 0
+      };
       const solver = new DrmSolver(config);
 
       const keys = await solver.solveDrm({ url: licenseUrl, pssh: pssh });
@@ -43,7 +49,13 @@ describe("DRM Solver Tests", () => {
     console.warn("skip local tests because content decryption module files were not found");
   }
   it("Should return a list of keys using the remote content decryption module", async () => {
-    const config: Config = { onlyDrm: true, forceRemoteDrm: true };
+    const config: DownloadConfig = {
+      onlyDrm: true,
+      forceRemoteDrm: true,
+      output: "",
+      chromeChannel: "",
+      concurrentFragments: 0
+    };
     const solver = new DrmSolver(config);
 
     const keys = await solver.solveDrm({ url: licenseUrl, pssh: pssh });
