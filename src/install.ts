@@ -11,6 +11,7 @@ import ProgressBar from "progress";
 import tar from "tar-stream";
 import { URL } from "url";
 import { Platform, Product, detectPlatform } from "./binaryExecutor.js";
+import { Logger } from "./io.js";
 
 const FFMPEG_WINDOWS_BASE_PATH = "https://github.com/GyanD/codexffmpeg/releases/download";
 const FFMPEG_WINDOWS_RELEASE = "2023-01-09-git-13d04e30d7";
@@ -62,10 +63,12 @@ const downloadURLs: Record<Product, Partial<Record<Platform, string>>> = {
 
 let platform: Platform;
 
+const logger = new Logger("Installer");
+
 export async function installDependencies() {
   platform = detectPlatform();
   checkBin();
-  console.log(`Downloading dependencies for Platform "${platform}"`);
+  logger.information(`Downloading dependencies for Platform "${platform}"`);
   try {
     await installFFMPEG();
   } catch (error) {
@@ -80,16 +83,16 @@ export async function installDependencies() {
 async function installFFMPEG() {
   const filePath = `./bin/ffmpeg${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
   if (existsSync(filePath)) {
-    return console.log("skipping ffmpeg, already exists");
+    return logger.information("skipping ffmpeg, already exists");
   }
   const url = downloadURLs["ffmpeg-latest"][platform];
   if (!url) {
-    return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
+    return logger.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
   }
   const downloadUrl = new URL(url);
 
   if (!canDownload(downloadUrl)) {
-    return console.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
+    return logger.warn("ffmpeg is not compatible with you platform or architecture, make sure you have it installed yourself then");
   }
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ffmpeg-extracted"));
@@ -97,7 +100,7 @@ async function installFFMPEG() {
   await _downloadFile(downloadUrl, tempDir, createProgressBar("ffmpeg-latest"));
 
   if (!existsSync(tempDir)) {
-    return console.warn("ffmpeg could not be downloaded, try again later");
+    return logger.warn("ffmpeg could not be downloaded, try again later");
   }
 
   switch (platform) {
@@ -124,14 +127,14 @@ async function installGeneric(product: Product, required: boolean) {
   const filePath = `./bin/${product}${platform === "windows" || platform === "windows_arm" ? ".exe" : ""}`;
 
   if (existsSync(filePath)) {
-    return console.log(`skipping ${product}, already exists`);
+    return logger.information(`skipping ${product}, already exists`);
   }
   const url = downloadURLs[product][platform];
   if (!url) {
     if (required) {
       throw new Error(`${product} is required but not compatible with you platform or architecture`);
     } else {
-      return console.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
+      return logger.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
     }
   }
   const downloadUrl = new URL(url);
@@ -139,7 +142,7 @@ async function installGeneric(product: Product, required: boolean) {
     if (required) {
       throw new Error(`${product} is required but not compatible with you platform or architecture`);
     } else {
-      return console.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
+      return logger.warn(`${product} is not compatible with you platform or architecture, make sure you have it installed yourself then`);
     }
   }
 
@@ -149,7 +152,7 @@ async function installGeneric(product: Product, required: boolean) {
     if (required) {
       throw new Error(`${product} is required but could not be downloaded, try again later`);
     } else {
-      return console.warn(`${product} could not be downloaded. skipping it for now, try again later`);
+      return logger.warn(`${product} could not be downloaded. skipping it for now, try again later`);
     }
   }
   await chmod(filePath, 0o755);
@@ -185,7 +188,7 @@ function canDownload(url: URL): Promise<boolean> {
       false
     );
     request.on("error", (error) => {
-      console.error(error);
+      logger.error(error);
       resolve(false);
     });
   });
@@ -225,7 +228,7 @@ function _downloadFile(url: URL, destinationPath: string, progressBar?: Progress
               return next();
               break;
             default:
-              console.warn(`skipping entry "${headers.name}" with type "${headers.type}"`);
+              logger.warn(`skipping entry "${headers.name}" with type "${headers.type}"`);
               stream.resume();
               return next();
           }

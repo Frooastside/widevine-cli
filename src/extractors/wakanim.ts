@@ -1,5 +1,4 @@
 import { createCipheriv } from "crypto";
-import { writeFileSync } from "fs";
 import { Server } from "http";
 import Koa from "koa";
 import { exit } from "process";
@@ -7,15 +6,13 @@ import { URL } from "url";
 import { format } from "util";
 import { v4 as uuidv4, validate } from "uuid";
 import { extractPsshData } from "../drm.js";
-import { Config } from "../index.js";
-import { Logger } from "../io.js";
+import { DownloadConfig, globalConfig } from "../index.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 
 import { wakanim_api, wakanim_core } from "wakanim-api";
 
 export default class WakanimService extends Extractor {
-  private _config: Config;
-  private _logger: Logger;
+  private _config: DownloadConfig;
   private _initialized = false;
   private _koa: Koa;
   private _koaServer: Server;
@@ -27,10 +24,9 @@ export default class WakanimService extends Extractor {
   private _accessToken?: string;
   private _premiumAccess?: boolean;
 
-  constructor(config: Config, logger: Logger) {
+  constructor(config: DownloadConfig) {
     super();
     this._config = config;
-    this._logger = logger;
     this._koa = new Koa();
     this._koa.use((context) => {
       const paths = context.request.path.split("/");
@@ -52,7 +48,7 @@ export default class WakanimService extends Extractor {
     const serverAddress = this._koaServer.address();
     const port = typeof serverAddress !== "string" ? serverAddress?.port : Number(serverAddress.split(":")[1]);
     this._koaAddress = `http://localhost:${port}`;
-    logger.debug(this.name, `koa server online on port ${port}`, this._koaAddress);
+    this.logger.debug(`koa server online on port ${port}`, this._koaAddress);
   }
 
   async initialize() {
@@ -128,8 +124,8 @@ export default class WakanimService extends Extractor {
       const loginInformation: wakanim_core.paths["/connect/token"]["post"]["responses"]["200"]["content"]["application/json"] =
         await loginResponse.json();
       this._accessToken = loginInformation.access_token;
-      if (this._config.verbose) {
-        this._logger.debug(this.name, "access token", this._accessToken);
+      if (globalConfig.verbose) {
+        this.logger.debug("access token", this._accessToken);
       }
     } else if (this._config.credentials) {
       const tokens = this._config.credentials.split(":");
@@ -161,8 +157,8 @@ export default class WakanimService extends Extractor {
       const loginInformation: wakanim_core.paths["/connect/token"]["post"]["responses"]["200"]["content"]["application/json"] =
         await loginResponse.json();
       this._accessToken = loginInformation.access_token;
-      if (this._config.verbose) {
-        this._logger.debug(this.name, "access token", this._accessToken);
+      if (globalConfig.verbose) {
+        this.logger.debug("access token", this._accessToken);
       }
     } else {
       throw new Error("this should have never had happen");
@@ -219,9 +215,9 @@ export default class WakanimService extends Extractor {
           }
           episodeMetadataList.push(episodeMetadata);
         } catch (error) {
-          this._logger.debug(this.name, error, (<Error>error)?.stack);
-          this._logger.error(this.name, error);
-          if (this._config.ignoreErrors) {
+          this.logger.debug(error, (<Error>error)?.stack);
+          this.logger.error(error);
+          if (globalConfig.ignoreErrors) {
             continue;
           } else {
             exit(1);
@@ -242,8 +238,8 @@ export default class WakanimService extends Extractor {
       };
       return containerMetadata;
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -260,8 +256,8 @@ export default class WakanimService extends Extractor {
       const episodeId = regexResult[2];
       return await this._fetchEpisodeMetadata(episodeId);
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -283,7 +279,7 @@ export default class WakanimService extends Extractor {
         throw new Error("an error occurred while extracting token for the license request");
       }
 
-      this._logger.debug(this.name, "manifest url", streamInformation.episodeFreeStreaming);
+      this.logger.debug("manifest url", streamInformation.episodeFreeStreaming);
       const manifestResponse = await fetch(streamInformation.episodeFreeStreaming, {
         headers: {
           "User-Agent": this._playerUserAgent,
@@ -300,7 +296,7 @@ export default class WakanimService extends Extractor {
       const manifest = await manifestResponse.text();
 
       let psshData: Record<string, Buffer>;
-      if (!manifest || !(psshData = await extractPsshData(this._logger, manifest))) {
+      if (!manifest || !(psshData = await extractPsshData(this.logger, manifest))) {
         throw new Error("an error occurred while parsing the manifest");
       }
       const episodeIndex = streamInformation.numero;
@@ -342,8 +338,8 @@ export default class WakanimService extends Extractor {
       };
       return metadata;
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -374,9 +370,6 @@ export default class WakanimService extends Extractor {
       throw new Error("an error occurred while fetching the show information");
     }
     const showInformation: wakanim_api.Show = await showInformationResponse.json();
-    if (this._config.verbose) {
-      writeFileSync(`wakanim-show-${uuidv4()}.json`, JSON.stringify(showInformation, null, 2));
-    }
     return showInformation;
   }
 
@@ -397,9 +390,6 @@ export default class WakanimService extends Extractor {
       throw new Error("an error occurred while fetching the stream information");
     }
     const streamInformation: wakanim_api.Episode = await streamInformationResponse.json();
-    if (this._config.verbose) {
-      writeFileSync(`wakanim-stream-${uuidv4()}.json`, JSON.stringify(streamInformation, null, 2));
-    }
     return streamInformation;
   }
 

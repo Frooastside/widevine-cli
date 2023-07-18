@@ -1,10 +1,8 @@
 import chalk from "chalk";
-import { writeFileSync } from "fs";
 import ProgressBar from "progress";
 import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
-import { Config } from "../index.js";
-import { Logger } from "../io.js";
+import { DownloadConfig } from "../index.js";
 import {
   ContainerDownload,
   Download,
@@ -12,21 +10,19 @@ import {
   Downloader,
   EpisodeDownload,
   EpisodeMetadata,
+  Metadata,
   isContainerMetadata,
-  isManifest,
-  Metadata
+  isManifest
 } from "../service.js";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
 export default class YT_DLP_Downloader extends Downloader {
-  private _config: Config;
-  private _logger: Logger;
+  private _config: DownloadConfig;
 
-  constructor(config: Config, logger: Logger) {
+  constructor(config: DownloadConfig) {
     super();
     this._config = config;
-    this._logger = logger;
   }
 
   initialize = undefined;
@@ -74,16 +70,9 @@ export default class YT_DLP_Downloader extends Downloader {
     if (isPlaylist) {
       throw new Error("Episodes can't be playlists at the same time");
     }
-
-    this._logger.information(
-      this.name,
+    this.logger.information(
       `Start downloading "${metadata.title ? metadata.title : isManifest(metadata.source) ? metadata.source.url : metadata.source}"`
     );
-    if (this._config.verbose) {
-      const scriptId = uuidv4();
-      writeFileSync(`security/yt-dlp-fetched-metadata-${scriptId}.json`, JSON.stringify(fetchedDownloadMetadata, null, 2));
-    }
-
     const files: DownloadedFile[] = [];
     for (const format of fetchedDownloadMetadata.requested_downloads) {
       if (format.requested_formats) {
@@ -143,7 +132,7 @@ export default class YT_DLP_Downloader extends Downloader {
         if (exitCode === 0) {
           resolve();
         } else {
-          this._logger.error(this.name, errorOutput);
+          this.logger.error(errorOutput);
           reject();
         }
       });
@@ -164,8 +153,7 @@ export default class YT_DLP_Downloader extends Downloader {
 
   private _createProgressBar(format: Format) {
     return new ProgressBar(
-      this._logger.format(
-        this.name,
+      this.logger.format(
         "INFO",
         false,
         `Downloading "${format.format_id}.${format.ext}" :elapseds [:bar] ${chalk.blue(":percent")} :progress/:sizeMiB ETA: ${chalk.yellow(":etas")}`

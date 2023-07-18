@@ -1,9 +1,7 @@
 import { load } from "cheerio";
 import CryptoJS from "crypto-js";
 import { Deobfuscator } from "deobfuscator";
-import { writeFileSync } from "fs";
 import * as meriyah from "meriyah";
-import { v4 as uuidv4 } from "uuid";
 import {
   isArrowFunctionExpression,
   isBlockStatement,
@@ -16,8 +14,7 @@ import {
   isVariableDeclaration,
   walkTree
 } from "../extractor.js";
-import { Config } from "../index.js";
-import { Logger } from "../io.js";
+import { DownloadConfig } from "../index.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
 
 export interface ContainerData {
@@ -30,14 +27,12 @@ export interface ContainerData {
 }
 
 export default class AniwatchService extends Extractor {
-  private _config: Config;
-  private _logger: Logger;
+  private _config: DownloadConfig;
   private _initialized = false;
 
-  constructor(config: Config, logger: Logger) {
+  constructor(config: DownloadConfig) {
     super();
     this._config = config;
-    this._logger = logger;
   }
 
   async initialize() {
@@ -70,7 +65,6 @@ export default class AniwatchService extends Extractor {
       }
       const seasonId = regexResult[5];
       const episodeList = await this._fetchEpisodeList(seasonId);
-      this._logger.jsonDump("DEBUG", this.name, episodeList);
       const containerData = await this._fetchContainerData(url);
       const episodeMetadataList: EpisodeMetadata[] = [];
       for (const episode of episodeList) {
@@ -81,7 +75,6 @@ export default class AniwatchService extends Extractor {
         episodeMetadata.title = episode.title;
         episodeMetadataList.push(episodeMetadata);
       }
-      this._logger.jsonDump("DEBUG", this.name, episodeMetadataList);
       const metadata: ContainerMetadata = {
         type: "container",
         contents: episodeMetadataList,
@@ -91,8 +84,8 @@ export default class AniwatchService extends Extractor {
       };
       return metadata;
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -120,8 +113,8 @@ export default class AniwatchService extends Extractor {
       const episodeId = regexResult[6];
       return await this._fetchEpisodeMetadata(seasonId, episodeId);
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -129,24 +122,20 @@ export default class AniwatchService extends Extractor {
   private async _fetchEpisodeMetadata(seasonId: string, episodeId: string, container?: string): Promise<EpisodeMetadata | null> {
     try {
       const servers = await this._fetchServers(episodeId);
-      this._logger.jsonDump("DEBUG", this.name, servers);
       const server = servers.find((server) => server.provider === "MegaCloud" && !server.dub);
       if (!server) {
         throw new Error("an error occurred, the selected episode is not available on the supported file hosters");
       }
-      this._logger.jsonDump("DEBUG", this.name, server);
       const sourceProviderResponse = await fetch(`https://aniwatch.to/ajax/v2/episode/sources?id=${server.serverItemId}`);
       if (!sourceProviderResponse.ok) {
         throw new Error("an error occurred while fetching the source provider");
       }
       const sourceProviderJson = await sourceProviderResponse.json();
-      this._logger.jsonDump("DEBUG", this.name, sourceProviderJson);
       const sourceRegexResult = /^(https?:)\/\/(www\.)?megacloud\.tv\/embed-2\/e-1\/([a-zA-Z0-9]+)/gi.exec(sourceProviderJson.link);
       if (!sourceRegexResult) {
         throw new Error("an error occurred while extracting the source id");
       }
       const sourceProviderId = sourceRegexResult[3];
-      this._logger.debug(this.name, "source provider id", sourceProviderId);
       const sourceInformationResponse = await fetch(`https://megacloud.tv/embed-2/ajax/e-1/getSources?id=${sourceProviderId}`, {
         method: "GET"
       });
@@ -157,14 +146,12 @@ export default class AniwatchService extends Extractor {
 
       if (sourceInformationJson.encrypted) {
         const encryptionKey = await this._fetchEncryptionKey();
-        this._logger.debug(this.name, "encryption key", encryptionKey);
+        this.logger.debug("encryption key", encryptionKey);
         sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
         if (sourceInformationJson.sourcesBackup) {
           sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
         }
       }
-
-      this._logger.jsonDump("DEBUG", this.name, sourceInformationJson);
 
       let episodeTitle: string | undefined;
       let episodeIndex: number | undefined | null;
@@ -179,8 +166,8 @@ export default class AniwatchService extends Extractor {
         }
         episodeIndex = episodeIndex ?? null;
       } catch (error) {
-        this._logger.debug(this.name, error, (<Error>error)?.stack);
-        this._logger.error(this.name, error);
+        this.logger.debug(error, (<Error>error)?.stack);
+        this.logger.error(error);
       }
 
       if (!container) {
@@ -188,8 +175,8 @@ export default class AniwatchService extends Extractor {
           const containerData = await this._fetchContainerData(`https://aniwatch.to/watch/jujutsu-kaisen-2nd-season-${seasonId}?ep=${episodeId}`);
           container = containerData.name;
         } catch (error) {
-          this._logger.debug(this.name, error, (<Error>error)?.stack);
-          this._logger.error(this.name, error);
+          this.logger.debug(error, (<Error>error)?.stack);
+          this.logger.error(error);
         }
       }
 
@@ -205,8 +192,8 @@ export default class AniwatchService extends Extractor {
 
       return metadata;
     } catch (error) {
-      this._logger.debug(this.name, error, (<Error>error)?.stack);
-      this._logger.error(this.name, error);
+      this.logger.debug(error, (<Error>error)?.stack);
+      this.logger.error(error);
       return null;
     }
   }
@@ -249,8 +236,6 @@ export default class AniwatchService extends Extractor {
       throw new Error("an error occurred while fetching the episode list, server status is bad");
     }
     const rawHtml = decodeURIComponent(jsonRepsonse.html);
-    this._logger.debug(this.name, "raw html", rawHtml, url);
-    this._logger.jsonDump("DEBUG", this.name, jsonRepsonse);
     const $ = load(rawHtml);
     return $;
   }
@@ -263,10 +248,7 @@ export default class AniwatchService extends Extractor {
   private async _fetchEncryptionKey() {
     const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
     const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
-    const time = process.uptime();
     const script = await this._deobfuscate(obfuscatedScript);
-    this._logger.debug(this.name, "deobfuscation duration", process.uptime() - time);
-
     const ast = meriyah.parseScript(script, {
       webcompat: true,
       loc: true
@@ -275,7 +257,6 @@ export default class AniwatchService extends Extractor {
     if (!encryptFunctionName) {
       throw new Error("failed to extract the name of the encryption function");
     }
-    this._logger.debug(this.name, "encrypt function name", encryptFunctionName);
     const encryptionKey = this._extractEncryptionKey(ast, encryptFunctionName);
     if (!encryptionKey) {
       throw new Error("failed to extract the value of the encryption key");
@@ -424,10 +405,6 @@ export default class AniwatchService extends Extractor {
     script = script.replaceAll(" 0 = ", " 0 + ");
     script = script.replaceAll("(0 += ", "(0 + ");
     script = script.replaceAll("(0 = ", "(0 + ");
-    if (this._config.verbose) {
-      const scriptId = uuidv4();
-      writeFileSync(`security/megacloud-script-${scriptId}.js`, script);
-    }
     return script;
   }
 

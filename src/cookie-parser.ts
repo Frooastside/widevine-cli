@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
-import { Config } from "./index.js";
+import { DownloadConfig } from "./index.js";
 
 export type Cookie = {
   name: string;
@@ -12,7 +12,7 @@ export type Cookie = {
 
 export const cookieJar: Cookie[] = [];
 
-export function initializeCookieStore(config: Config) {
+export function initializeCookieStore(config: DownloadConfig) {
   if (config.chromeLoadCookies) {
     readCookieJar();
     readExternalCookies();

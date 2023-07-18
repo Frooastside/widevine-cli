@@ -1,7 +1,9 @@
 import chalk from "chalk";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import readline, { Interface } from "node:readline/promises";
 import { format } from "util";
-import { Config } from "./index.js";
+import { v4 as uuidv4 } from "uuid";
+import { globalConfig } from "./index.js";
 
 export class Input {
   private _input: Interface;
@@ -20,51 +22,63 @@ export class Input {
 }
 
 export class Logger {
-  private _config: Config;
   private _baseComponent: string;
 
-  constructor(config: Config, baseComponent: string) {
-    this._config = config;
+  constructor(baseComponent: string) {
     this._baseComponent = baseComponent;
   }
 
-  information(component?: string, ...objects: unknown[]) {
-    if (this._config.silent) {
+  information(...objects: unknown[]) {
+    if (globalConfig.silent) {
       return;
     }
-    process.stderr.write(this.format(component, "INFO", false, objects.join(", ")).concat("\n"));
+    process.stderr.write(this.format("INFO", false, objects.join(", ")).concat("\n"));
   }
 
-  warn(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this.format(component, "WARNING", false, objects.join(", ")).concat("\n"));
-  }
-
-  error(component?: string, ...objects: unknown[]) {
-    process.stderr.write(this.format(component, "ERROR", false, chalk.redBright(objects.join(", "))).concat("\n"));
-  }
-
-  debug(component?: string, ...objects: unknown[]) {
-    if (!this._config.verbose) {
+  extraInformation(...objects: unknown[]) {
+    if (!globalConfig.verbose && !globalConfig.debug) {
       return;
     }
-    process.stderr.write(this.format(component, "DEBUG", false, objects.join(", ")).concat("\n"));
+    process.stderr.write(this.format("INFO", false, objects.join(", ")).concat("\n"));
   }
 
-  jsonDump(level: "DEBUG" | "INFO", component: string | undefined, object: unknown) {
-    if (!this._config.verbose) {
+  warn(...objects: unknown[]) {
+    process.stderr.write(this.format("WARNING", false, objects.join(", ")).concat("\n"));
+  }
+
+  error(...objects: unknown[]) {
+    process.stderr.write(this.format("ERROR", false, chalk.redBright(objects.join(", "))).concat("\n"));
+  }
+
+  debug(...objects: unknown[]) {
+    if (!globalConfig.debug) {
       return;
     }
-    (level === "INFO" ? process.stdout : process.stderr).write(this.format(component, level, false, JSON.stringify(object)).concat("\n"));
+    process.stderr.write(this.format("DEBUG", false, objects.join(", ")).concat("\n"));
   }
 
-  format(component: string | undefined, level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
+  debugJsonDump(object: unknown) {
+    if (!globalConfig.verbose) {
+      return;
+    }
+    process.stderr.write(this.format("DEBUG", false, JSON.stringify(object)).concat("\n"));
+  }
+
+  format(level: "DEBUG" | "INFO" | "WARNING" | "ERROR", input: boolean, text: string): string {
     const date = new Date();
     const dateString = chalk.greenBright(`${date.toLocaleTimeString()},${date.getMilliseconds()}`);
-    const componentString = chalk.blue(!!component ? component : this._baseComponent);
+    const componentString = chalk.blue(this._baseComponent);
     const color = this._color(level);
     return input
       ? format("[%s] %s (%s): ", componentString, color(level), text)
       : format("[%s] %s (%s): %s ", dateString, componentString, color(level), text);
+  }
+
+  debugFileDump(filename: string, extension: string, fileContents: string | NodeJS.ArrayBufferView) {
+    if (!existsSync("security/")) {
+      mkdirSync("security/");
+    }
+    writeFileSync(`security/${filename}-${uuidv4()}.${extension}`, fileContents);
   }
 
   private _color(level: "DEBUG" | "INFO" | "WARNING" | "ERROR"): typeof chalk.red {

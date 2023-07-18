@@ -1,25 +1,40 @@
 import { Cookie } from "./cookie-parser";
 import { LicenseInformation } from "./drm";
+import { Logger } from "./io";
 
 export abstract class Extractor {
+  private _logger?: Logger;
   abstract initialize?(): Promise<void> | void;
   abstract release?(): Promise<void> | void;
   abstract checkResponsibility(url: string): boolean;
   abstract fetchMetadata(url: string): Promise<Metadata | null>;
   abstract get name(): string;
   abstract get version(): string;
+  get logger(): Logger {
+    if (!this._logger) {
+      this._logger = new Logger(this.name);
+    }
+    return this._logger;
+  }
   get ready(): boolean {
     return true;
   }
 }
 
 export abstract class Downloader {
+  private _logger?: Logger;
   abstract initialize?(): Promise<void> | void;
   abstract release?(): Promise<void> | void;
   abstract checkResponsibility(url: string): boolean;
   abstract download(metadata: Metadata): Promise<Download | null>;
   abstract get name(): string;
   abstract get version(): string;
+  get logger(): Logger {
+    if (!this._logger) {
+      this._logger = new Logger(this.name);
+    }
+    return this._logger;
+  }
   get ready(): boolean {
     return true;
   }

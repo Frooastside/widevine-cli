@@ -21,7 +21,7 @@ import AniwatchService from "./extractors/aniwatch.js";
 import GenericExtractor from "./extractors/generic.js";
 import WakanimService from "./extractors/wakanim.js";
 import FFMPEG from "./ffmpeg.js";
-import { Config } from "./index.js";
+import { DownloadConfig, globalConfig } from "./index.js";
 import { Input, Logger } from "./io.js";
 import {
   ContainerDownload,
@@ -40,7 +40,7 @@ import {
 const rm = promisify(rawRm);
 
 export default class App {
-  private _config: Config;
+  private _config: DownloadConfig;
   private _logger: Logger;
   private _io: Input;
   private _drm: DrmSolver;
@@ -53,9 +53,9 @@ export default class App {
 
   private _cache: Record<string, KeyContainer[]> = {};
 
-  constructor(config: Config) {
+  constructor(config: DownloadConfig) {
     this._config = config;
-    this._logger = new Logger(config, "wvcli");
+    this._logger = new Logger("wvcli");
     this._io = new Input();
     this._drm = new DrmSolver(config);
 
@@ -79,10 +79,10 @@ export default class App {
 
     initializeCookieJar(config);
 
-    this._extractors = [new WakanimService(config, this._logger), new AniwatchService(config, this._logger)];
+    this._extractors = [new WakanimService(config), new AniwatchService(config)];
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
-    this._genericDownloader = new YT_DLP_Downloader(this._config, this._logger);
+    this._genericDownloader = new YT_DLP_Downloader(this._config);
   }
 
   async start() {
@@ -97,8 +97,8 @@ export default class App {
         try {
           await this._handleInput(input);
         } catch (error) {
-          this._logger.debug(undefined, error, (<Error>error)?.stack);
-          this._handleError(undefined, error);
+          this._logger.debug(error, (<Error>error)?.stack);
+          this._handleError(error);
         }
       }
     }
@@ -119,7 +119,7 @@ export default class App {
         isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
       ).filter((file) => file.encrypted).length;
       if (drmFound) {
-        this._logger.debug(undefined, "DRM protected content was downloaded and has to be decrypted");
+        this._logger.extraInformation("DRM protected content was downloaded and has to be decrypted");
       }
       if (drmFound && !this._config.skipDrm) {
         if (!(await this._decryptFiles(download, this._cache))) {
@@ -129,7 +129,7 @@ export default class App {
       const output = await this._handleMissingInformation(download);
       await this._handleOutputs(output);
       try {
-        if (!this._config.verbose) {
+        if (!globalConfig.verbose) {
           await this._removeTemporaryFiles(download);
         }
       } catch (error) {
@@ -137,7 +137,13 @@ export default class App {
       }
     } else {
       await this._collectDecryptionKeys(metadata, this._cache);
-      this._logger.jsonDump("INFO", undefined, this._cache);
+      for (const format of Object.keys(this._cache)) {
+        const psshData = this._cache[format];
+        this._logger.information(`Format "${format}":`);
+        for (const keyContainer of psshData) {
+          this._logger.information(`kid:key ${keyContainer.kid}:${keyContainer.key}`);
+        }
+      }
     }
   }
   private async _removeTemporaryFiles(download: Download) {
@@ -294,7 +300,7 @@ export default class App {
       } else {
         const response = await enquirer.prompt<{ title: string }>({
           type: "input",
-          message: this._logger.format(undefined, "INFO", true, container ? "Container Title" : "Episode Title"),
+          message: this._logger.format("INFO", true, container ? "Container Title" : "Episode Title"),
           name: "title",
           validate: (value) => !!value
         });
@@ -317,7 +323,7 @@ export default class App {
       } else {
         const response = await enquirer.prompt<{ index: string }>({
           type: "input",
-          message: this._logger.format(undefined, "INFO", true, "Episode Index (empty if there's only 1)"),
+          message: this._logger.format("INFO", true, "Episode Index (empty if there's only 1)"),
           name: "index",
           validate: (value: string) => !value || !isNaN(parseFloat(value))
         });
@@ -341,7 +347,7 @@ export default class App {
       } else {
         const response = await enquirer.prompt<{ season: string }>({
           type: "input",
-          message: this._logger.format(undefined, "INFO", true, "Season (empty if not in a container)"),
+          message: this._logger.format("INFO", true, "Season (empty if not in a container)"),
           name: "season",
           validate: (value: string) => !value || !isNaN(parseFloat(value))
         });
@@ -355,7 +361,7 @@ export default class App {
   private async _extract(url: string): Promise<Metadata | undefined> {
     let responsibleExtractor = this._extractors.find((extractor) => extractor.checkResponsibility(url));
     if (!responsibleExtractor) {
-      this._logger.debug(undefined, "there was no matching provider, using the generic one.");
+      this._logger.extraInformation("there was no matching provider, using the generic one.");
       responsibleExtractor = this._genericExtractor;
     }
     if (!responsibleExtractor.ready) {
@@ -371,15 +377,15 @@ export default class App {
       }
       metadata = await responsibleExtractor.fetchMetadata(url);
       if (!metadata) {
-        this._handleError(undefined, "an error occurred while fetching the metadata");
+        this._handleError("an error occurred while fetching the metadata");
         return;
       }
-      this._logger.information(responsibleExtractor.name, "sucessfully extracted metadata");
-      this._logger.jsonDump("DEBUG", responsibleExtractor.name, metadata);
+      this._logger.information("sucessfully extracted metadata");
+      this._logger.debugJsonDump(metadata);
       return metadata;
     } catch (error) {
-      this._logger.debug(responsibleExtractor.name, error, (<Error>error)?.stack);
-      this._handleError(responsibleExtractor.name, error);
+      this._logger.debug(error, (<Error>error)?.stack);
+      this._handleError(error);
       return;
     }
   }
@@ -389,7 +395,7 @@ export default class App {
       extractor.checkResponsibility(isManifest(metadata.source) ? metadata.source.url : metadata.source)
     );
     if (!responsibleDownloader) {
-      this._logger.debug(undefined, "there was no matching download provider, using the generic one.");
+      this._logger.extraInformation("there was no matching download provider, using the generic one.");
       responsibleDownloader = this._genericDownloader;
     }
     if (!responsibleDownloader.ready) {
@@ -404,15 +410,15 @@ export default class App {
       }
       const download = await this._genericDownloader.download(metadata);
       if (!download) {
-        this._handleError(undefined, "an error occurred while downloading");
+        this._handleError("an error occurred while downloading");
         return;
       }
-      this._logger.information(responsibleDownloader.name, "downloads finished");
-      this._logger.jsonDump("DEBUG", responsibleDownloader.name, download);
+      this._logger.information("downloads finished");
+      this._logger.debugJsonDump(download);
       return download;
     } catch (error) {
-      this._logger.debug(responsibleDownloader.name, error, (<Error>error)?.stack);
-      this._handleError(responsibleDownloader.name, error);
+      this._logger.debug(error, (<Error>error)?.stack);
+      this._handleError(error);
       return;
     }
   }
@@ -441,15 +447,12 @@ export default class App {
       const pssh = psshData[format];
       const keyContainers: KeyContainer[] =
         cache[pssh.toString("base64")] ||
-        (await this._drm.solveDrm(
-          {
-            url: licenseInformation.url,
-            cookies: licenseInformation.cookies,
-            headers: licenseInformation.headers,
-            pssh
-          },
-          this._logger
-        ));
+        (await this._drm.solveDrm({
+          url: licenseInformation.url,
+          cookies: licenseInformation.cookies,
+          headers: licenseInformation.headers,
+          pssh
+        }));
       if (!cache[pssh.toString("base64")]) {
         cache[pssh.toString("base64")] = keyContainers;
       }
@@ -475,19 +478,18 @@ export default class App {
   private async _decryptEpisode(episode: EpisodeDownload, cache: Record<string, KeyContainer[]>): Promise<boolean> {
     const licenseInformation = episode.metadata.licenseInformation;
     if (!licenseInformation) {
-      this._handleError(undefined, "DRM protected content was downloaded but there is no license information");
+      this._handleError("DRM protected content was downloaded but there is no license information");
       return false;
     }
     const psshData = licenseInformation.psshData;
     if (!psshData) {
-      this._handleError(undefined, "DRM protected content was downloaded but no key identifiers were found");
+      this._handleError("DRM protected content was downloaded but no key identifiers were found");
       return false;
     }
     for (const file of episode.files.filter((file) => file.encrypted)) {
       const pssh = psshData[file.format.id];
       if (!pssh) {
         this._handleError(
-          undefined,
           `the file ${file.path} is drm protected but the key identifier was not found, [${[
             ...new Set(Object.keys(psshData).flatMap((formatId) => psshData[formatId].toString("base64")))
           ].join(", ")}]`
@@ -495,54 +497,41 @@ export default class App {
         return false;
       }
       if (!!cache[pssh.toString("base64")]) {
-        this._logger.debug(undefined, `key for pssh "${pssh.toString("base64")}" is cached and will be used`);
+        this._logger.extraInformation(`key for pssh "${pssh.toString("base64")}" is cached and will be used`);
       } else {
-        this._logger.debug(undefined, `key for pssh "${pssh.toString("base64")}" is not cached and will be fetched`);
+        this._logger.extraInformation(`key for pssh "${pssh.toString("base64")}" is not cached and will be fetched`);
       }
       const keyContainers: KeyContainer[] =
         cache[pssh.toString("base64")] ||
-        (await this._drm.solveDrm(
-          {
-            url: licenseInformation.url,
-            cookies: licenseInformation.cookies,
-            headers: licenseInformation.headers,
-            pssh
-          },
-          this._logger
-        ));
+        (await this._drm.solveDrm({
+          url: licenseInformation.url,
+          cookies: licenseInformation.cookies,
+          headers: licenseInformation.headers,
+          pssh
+        }));
       if (!cache[pssh.toString("base64")]) {
         cache[pssh.toString("base64")] = keyContainers;
       }
-      this._logger.debug(undefined, `try to decrypt "${file.path}"`);
+      this._logger.extraInformation(`trying to decrypt "${file.path}"`);
       await this._drm.decrpytFile(file, keyContainers);
-      this._logger.information(undefined, `decrypted "${file.path}"`);
+      this._logger.information(`decrypted "${file.path}"`);
     }
     return true;
   }
 
   release() {
-    this._extractors.forEach((extractor) => extractor.release && extractor.release());
-    this._downloaders.forEach((downloader) => downloader.release && downloader.release());
+    this._extractors?.forEach((extractor) => extractor.release && extractor.release());
+    this._downloaders?.forEach((downloader) => downloader.release && downloader.release());
     this._io.release();
   }
 
-  private _handleError(component: string | undefined, error: unknown): never | void {
-    if (!this._config.ignoreErrors) {
-      this._logger.error(component, error);
+  private _handleError(error: unknown): never | void {
+    if (!globalConfig.ignoreErrors) {
+      this._logger.error(error);
       exit(1);
     } else {
-      this._logger.warn(component, "Ignoring error because of --ignore-errors", error);
+      this._logger.warn("Ignoring error because of --ignore-errors", error);
       return;
-    }
-  }
-
-  private _validateUrl(value: string): boolean {
-    try {
-      new URL(value);
-      return true;
-    } catch (error) {
-      this._logger.debug(undefined, error, (<Error>error)?.stack);
-      return false;
     }
   }
 }
