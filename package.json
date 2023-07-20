@@ -31,7 +31,7 @@
     ]
   },
   "scripts": {
-    "start": "pnpm start:wakanim:episode",
+    "start": "pnpm start:aniwatch:episode --debug",
     "start:wakanim:season": "pnpm start:raw download --force-local-drm -N 4 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --chrome-channel chrome --visual --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
     "start:wakanim:episode": "pnpm start:raw download --force-local-drm -N 4 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --chrome-channel chrome --visual --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
     "start:aniwatch:season": "pnpm start:raw download --force-local-drm -N 4 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --chrome-channel chrome --visual --verbose -i \"https://aniwatch.to/watch/horimiya-the-missing-pieces-18421\"",

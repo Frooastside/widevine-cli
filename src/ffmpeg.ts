@@ -1,6 +1,6 @@
 import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Logger } from "./io.js";
-import { DownloadedFile } from "./service.js";
+import { DownloadedMediaFile } from "./service.js";
 
 const binaryExecutor = new BinaryExecutor("ffmpeg");
 
@@ -11,7 +11,7 @@ export default class FFMPEG {
     this._logger = logger;
   }
 
-  async combineDownloadedFiles(files: DownloadedFile[], output: string) {
+  async combineDownloadedFiles(files: DownloadedMediaFile[], output: string) {
     await this.combineFiles(
       files.filter((file) => !file.encrypted).map((file) => file.path),
       output
@@ -19,7 +19,14 @@ export default class FFMPEG {
   }
 
   async combineFiles(files: string[], output: string) {
-    const args: ExecutionArguments = [files.map((path) => ["-i", `"${path}"`]).flat(), ["-c:v", "copy"], ["-c:a", "copy"], `"${output}"`];
+    const args: ExecutionArguments = [
+      files.map((path) => ["-i", `"${path}"`]).flat(),
+      ["-c:v", "copy"],
+      ["-c:a", "copy"],
+      ["-c:s", "copy"],
+      `"${output}"`
+    ];
+    this._logger.debug(args.join(" "));
     const child = await binaryExecutor.spawn(args);
     let errorOutput = "\n";
     child.stderr?.on("data", (data) => (errorOutput = errorOutput + data));

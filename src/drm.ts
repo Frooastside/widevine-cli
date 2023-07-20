@@ -8,7 +8,7 @@ import BinaryExecutor, { ExecutionArguments } from "./binaryExecutor.js";
 import { Cookie } from "./cookie-parser.js";
 import { DownloadConfig, globalConfig } from "./index.js";
 import { Logger } from "./io.js";
-import { DownloadedFile } from "./service.js";
+import { DownloadedMediaFile } from "./service.js";
 
 const rm = promisify(rawRm);
 const binaryExecutor = new BinaryExecutor("shaka-packager");
@@ -158,7 +158,7 @@ export default class DrmSolver {
       .map((keyContainer: string[]) => ({ kid: keyContainer[0], key: keyContainer[1] }));
   }
 
-  async decrpytFile(file: DownloadedFile, keys: KeyContainer[]) {
+  async decrpytFile(file: DownloadedMediaFile, keys: KeyContainer[]) {
     const args: ExecutionArguments = [
       "--enable_raw_key_decryption",
       ["--keys", keys.map((key, index) => `label=key_${index}:key_id=${key.kid}:key=${key.key}`).join(",")],

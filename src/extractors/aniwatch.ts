@@ -26,6 +26,33 @@ export interface ContainerData {
   series_url: string;
 }
 
+export interface SourceInformation {
+  sources: Source[] | string;
+  sourcesBackup: Source[] | string;
+  tracks: Track[];
+  encrypted: boolean;
+  intro: TimedEvent;
+  outro: TimedEvent;
+  server: number;
+}
+
+export interface Source {
+  file: string;
+  type: string;
+}
+
+export interface Track {
+  file: string;
+  kind: string;
+  label?: string;
+  default?: boolean;
+}
+
+export interface TimedEvent {
+  start: number;
+  end: number;
+}
+
 export default class AniwatchService extends Extractor {
   private _config: DownloadConfig;
   private _initialized = false;
@@ -142,16 +169,24 @@ export default class AniwatchService extends Extractor {
       if (!sourceInformationResponse.ok) {
         throw new Error("an error occurred while fetching the source information");
       }
-      const sourceInformationJson = await sourceInformationResponse.json();
+      const sourceInformationJson: SourceInformation = await sourceInformationResponse.json();
 
       if (sourceInformationJson.encrypted) {
-        const encryptionKey = await this._fetchEncryptionKey();
-        this.logger.debug("encryption key", encryptionKey);
-        sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
-        if (sourceInformationJson.sourcesBackup) {
-          sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
+        if (typeof sourceInformationJson.sources === "string") {
+          const encryptionKey = await this._fetchEncryptionKey();
+          this.logger.debug("encryption key", encryptionKey);
+          sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
+          if (!!sourceInformationJson.sourcesBackup && typeof sourceInformationJson.sourcesBackup === "string") {
+            sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
+          }
         }
       }
+
+      if (typeof sourceInformationJson.sources === "string") {
+        throw new Error("sources are still encrypted and can't be downloaded");
+      }
+
+      this.logger.debugJsonDump(sourceInformationJson);
 
       let episodeTitle: string | undefined;
       let episodeIndex: number | undefined | null;
@@ -187,7 +222,8 @@ export default class AniwatchService extends Extractor {
         container: container,
         source: {
           url: sourceInformationJson.sources[0].file
-        }
+        },
+        subtitles: sourceInformationJson.tracks.filter((track) => track.kind === "captions").map((track) => ({ url: track.file }))
       };
 
       return metadata;
@@ -248,7 +284,9 @@ export default class AniwatchService extends Extractor {
   private async _fetchEncryptionKey() {
     const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
     const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
+    this.logger.debugFileDump("megacloud-obfuscated-script", "js", obfuscatedScript);
     const script = await this._deobfuscate(obfuscatedScript);
+    this.logger.debugFileDump("megacloud-script", "js", script);
     const ast = meriyah.parseScript(script, {
       webcompat: true,
       loc: true

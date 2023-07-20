@@ -127,6 +127,7 @@ export default class App {
         }
       }
       const output = await this._handleMissingInformation(download);
+      this._logger.debugJsonDump(output);
       await this._handleOutputs(output);
       try {
         if (!this._config.keepTemporaryFiles) {
@@ -152,10 +153,16 @@ export default class App {
         for (const file of episode.files) {
           await rm(file.path);
         }
+        for (const subtitleFile of episode.subtitles || []) {
+          await rm(subtitleFile.path);
+        }
       }
     } else {
       for (const file of download.files) {
         await rm(file.path);
+      }
+      for (const subtitleFile of download.subtitles || []) {
+        await rm(subtitleFile.path);
       }
     }
   }
@@ -247,7 +254,8 @@ export default class App {
                 return true;
               }
             })
-            .map((file) => file.path),
+            .map((file) => file.path)
+            .concat((episode.subtitles || []).map((subtitle) => subtitle.path)),
           title: title,
           index: index,
           season: season,
@@ -282,7 +290,8 @@ export default class App {
               return true;
             }
           })
-          .map((file) => file.path),
+          .map((file) => file.path)
+          .concat((input.subtitles || []).map((subtitle) => subtitle.path)),
         title: title,
         index: index,
         season: season,

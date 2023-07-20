@@ -72,14 +72,20 @@ export interface ContainerDownload extends DownloadBase {
 
 export interface EpisodeDownload extends DownloadBase {
   type: "episode";
-  files: DownloadedFile[];
+  files: DownloadedMediaFile[];
+  subtitles?: DownloadedSubtitleFile[];
   metadata: EpisodeMetadata;
 }
 
-export interface DownloadedFile {
+export interface DownloadedMediaFile {
   path: string;
   encrypted: boolean;
   format: Format;
+}
+
+export interface DownloadedSubtitleFile {
+  path: string;
+  language?: string;
 }
 
 export interface Format {
@@ -95,11 +101,10 @@ export type Metadata = ContainerMetadata | EpisodeMetadata;
 interface MetadataBase {
   type: DataType;
   title?: string;
-  source: string | Manifest;
-  licenseInformation?: LicenseInformation;
+  source: string | Source;
 }
 
-export function isManifest(source: string | Manifest): source is Manifest {
+export function isManifest(source: string | Source): source is Source {
   return typeof source === "object" && typeof source.url === "string";
 }
 
@@ -113,11 +118,13 @@ export interface EpisodeMetadata extends MetadataBase {
   container?: string | null;
   season?: number | null;
   index?: number | null;
+  licenseInformation?: LicenseInformation;
+  subtitles?: Source[];
 }
 
 export type DataType = "container" | "episode";
 
-export type Manifest = {
+export type Source = {
   url: string;
   cookies?: Cookie[];
   headers?: HeadersInit;

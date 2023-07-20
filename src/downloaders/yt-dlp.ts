@@ -1,12 +1,14 @@
 import chalk from "chalk";
+import cookie from "cookie";
 import ProgressBar from "progress";
 import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
-import { DownloadConfig } from "../index.js";
+import { DownloadConfig, globalConfig } from "../index.js";
 import {
   ContainerDownload,
   Download,
-  DownloadedFile,
+  DownloadedMediaFile,
+  DownloadedSubtitleFile,
   Downloader,
   EpisodeDownload,
   EpisodeMetadata,
@@ -14,6 +16,8 @@ import {
   isContainerMetadata,
   isManifest
 } from "../service.js";
+import { writeFileSync } from "fs";
+import { extname } from "path";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
@@ -73,7 +77,7 @@ export default class YT_DLP_Downloader extends Downloader {
     this.logger.information(
       `Start downloading "${metadata.title ? metadata.title : isManifest(metadata.source) ? metadata.source.url : metadata.source}"`
     );
-    const files: DownloadedFile[] = [];
+    const files: DownloadedMediaFile[] = [];
     for (const format of fetchedDownloadMetadata.requested_downloads) {
       if (format.requested_formats) {
         for (const formatParts of format.requested_formats) {
@@ -84,15 +88,75 @@ export default class YT_DLP_Downloader extends Downloader {
       }
     }
 
+    const subtitles: DownloadedSubtitleFile[] = [];
+    for (const subtitle of metadata.subtitles || []) {
+      const subtitleId = uuidv4();
+      const cookieHeader = subtitle.cookies
+        ? subtitle.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
+        : undefined;
+      const headers: HeadersInit | undefined = cookieHeader
+        ? {
+            ...subtitle.headers,
+            cookie: cookieHeader
+          }
+        : subtitle.headers;
+      const subtitleResponse = await fetch(subtitle.url, {
+        method: "GET",
+        headers: headers
+      });
+      if (!subtitleResponse.ok && !globalConfig.ignoreErrors) {
+        throw new Error("failed to fetch subtitle file");
+      }
+      const fetchedSubtitleContent = await subtitleResponse.text();
+      const parsedUrl = subtitle.url.replace(/\/$/, "");
+      const remoteFileName = parsedUrl.substring(parsedUrl.lastIndexOf("/") + 1);
+      const fileExtension = extname(remoteFileName);
+      const fileName = `${subtitleId}${fileExtension}`;
+      let subtitleContent: string = "";
+      if (fileExtension.toLowerCase() === ".vtt") {
+        this.logger.debug("Redoing the VTT File");
+        const lines = fetchedSubtitleContent.replaceAll("\r\n", "\n").split("\n");
+        const newLines: string[] = [];
+        let lastLineType: "empty" | "timings" | "content" = "timings";
+        for (let i = 0; i < lines.length; i++) {
+          const currentLine = lines[i]?.trim() || "";
+          const nextLine = lines[i + 1]?.trim() || "";
+          const currentLineType =
+            currentLine.length === 0
+              ? "empty"
+              : /(\d{2}:)?\d{2}:\d{2}.\d{3} +--> +(\d{2}:)?\d{2}:\d{2}.\d{3}/gi.test(currentLine)
+              ? "timings"
+              : "content";
+          const nextLineType =
+            nextLine.length === 0 ? "empty" : /(\d{2}:)?\d{2}:\d{2}.\d{3} +--> +(\d{2}:)?\d{2}:\d{2}.\d{3}/gi.test(nextLine) ? "timings" : "content";
+          if (currentLine !== "empty" || nextLineType === "timings") {
+            newLines.push(currentLine);
+            this.logger.debug("writing line", i, lastLineType, currentLineType, nextLineType);
+          } else {
+            this.logger.debug("Skipping line", i, lastLineType, currentLineType, nextLineType);
+          }
+          lastLineType = currentLineType;
+        }
+        subtitleContent = newLines.join("\n");
+      } else {
+        subtitleContent = fetchedSubtitleContent;
+      }
+      writeFileSync(fileName, subtitleContent);
+      subtitles.push({
+        path: fileName
+      });
+    }
+
     const download: EpisodeDownload = {
       files: files,
       type: "episode",
-      metadata: metadata
+      metadata: metadata,
+      subtitles: subtitles
     };
     return download;
   }
 
-  private async _downloadFormat(format: Format, fileId: string): Promise<DownloadedFile> {
+  private async _downloadFormat(format: Format, fileId: string): Promise<DownloadedMediaFile> {
     const args: ExecutionArguments = [
       "--quiet",
       "--allow-unplayable-formats",
@@ -137,7 +201,7 @@ export default class YT_DLP_Downloader extends Downloader {
         }
       });
     });
-    const file: DownloadedFile = {
+    const file: DownloadedMediaFile = {
       encrypted: !!format.has_drm,
       format: {
         id: format.format_id,
