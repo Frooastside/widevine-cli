@@ -57,6 +57,8 @@ export default class AniwatchService extends Extractor {
   private _config: DownloadConfig;
   private _initialized = false;
 
+  private _substringKey?: string;
+
   constructor(config: DownloadConfig) {
     super();
     this._config = config;
@@ -171,15 +173,9 @@ export default class AniwatchService extends Extractor {
       }
       const sourceInformationJson: SourceInformation = await sourceInformationResponse.json();
 
-      if (sourceInformationJson.encrypted) {
-        if (typeof sourceInformationJson.sources === "string") {
-          const encryptionKey = await this._fetchEncryptionKey();
-          this.logger.debug("encryption key", encryptionKey);
-          sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
-          if (!!sourceInformationJson.sourcesBackup && typeof sourceInformationJson.sourcesBackup === "string") {
-            sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
-          }
-        }
+      if (sourceInformationJson.encrypted && typeof sourceInformationJson.sources === "string") {
+        //TODO
+        throw new Error("refactoring");
       }
 
       if (typeof sourceInformationJson.sources === "string") {
@@ -276,12 +272,52 @@ export default class AniwatchService extends Extractor {
     return $;
   }
 
-  private _decrypt(encryptedValue: string, key: string) {
+  private _decrypt(encryptedValue: string, key: string): string {
     const valueBuffer = CryptoJS.AES.decrypt(encryptedValue, key);
     return JSON.parse(valueBuffer.toString(CryptoJS.enc.Utf8));
   }
 
-  private async _fetchEncryptionKey() {
+  private _switchDecrypt(sources: string): string {
+    const PARTS = [
+      { offset: 69, length: 7 },
+      { offset: 139, length: 7 },
+      { offset: 167, length: 6 },
+      { offset: 198, length: 6 }
+    ];
+    let key = "";
+    let patchedSources = sources;
+    let globalOffset = 0;
+    for (let i = 0; i < PARTS.length; i++) {
+      const { offset, length } = PARTS[i];
+      const start = offset + globalOffset;
+      const end = start + length;
+      const piece = sources.slice(start, end);
+      key += piece;
+      patchedSources = patchedSources.replace(piece, "");
+      globalOffset += length;
+    }
+    return this._decrypt(patchedSources, key);
+  }
+
+  private async _substringDecrypt(sources: string): Promise<string> {
+    //TODO CHECK THIS ERROR SOURCE
+    if (this._substringKey) {
+      try {
+        this.logger.debug("encryption key", this._substringKey);
+        return this._decrypt(sources, this._substringKey);
+      } catch (error) {
+        this._substringKey = await this._fetchSubstringEncryptionKey();
+        this.logger.debug("encryption key", this._substringKey);
+        return this._decrypt(sources, this._substringKey);
+      }
+    } else {
+      this._substringKey = await this._fetchSubstringEncryptionKey();
+      this.logger.debug("encryption key", this._substringKey);
+      return this._decrypt(sources, this._substringKey);
+    }
+  }
+
+  private async _fetchSubstringEncryptionKey() {
     const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
     const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
     this.logger.debugFileDump("megacloud-obfuscated-script", "js", obfuscatedScript);
@@ -295,14 +331,14 @@ export default class AniwatchService extends Extractor {
     if (!encryptFunctionName) {
       throw new Error("failed to extract the name of the encryption function");
     }
-    const encryptionKey = this._extractEncryptionKey(ast, encryptFunctionName);
+    const encryptionKey = this._extractSubstringEncryptionKey(ast, encryptFunctionName);
     if (!encryptionKey) {
       throw new Error("failed to extract the value of the encryption key");
     }
     return encryptionKey;
   }
 
-  private _extractEncryptionKey(ast: meriyah.ESTree.Program, encryptFunctionName: string) {
+  private _extractSubstringEncryptionKey(ast: meriyah.ESTree.Program, encryptFunctionName: string) {
     let encryptionKey: string | null = null;
     walkTree(ast, (node) => {
       if (!encryptionKey && isVariableDeclaration(node)) {
