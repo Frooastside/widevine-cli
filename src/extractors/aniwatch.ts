@@ -6,16 +6,20 @@ import {
   isArrowFunctionExpression,
   isBlockStatement,
   isCallExpression,
+  isExpressionStatement,
+  isForStatement,
   isIdentifier,
   isLiteral,
   isMemberExpression,
   isReturnStatement,
+  isSwitchStatement,
   isTryStatement,
   isVariableDeclaration,
   walkTree
 } from "../extractor.js";
 import { DownloadConfig } from "../index.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
+import { BlockStatement } from "deobfuscator/dist/util/types.js";
 
 export interface ContainerData {
   page: string;
@@ -53,9 +57,19 @@ export interface TimedEvent {
   end: number;
 }
 
+export type Pieces = Piece[];
+
+export interface Piece {
+  offset: number;
+  length: number;
+}
+
 export default class AniwatchService extends Extractor {
   private _config: DownloadConfig;
   private _initialized = false;
+
+  private _substringKey?: string;
+  private _switchPieces?: Pieces;
 
   constructor(config: DownloadConfig) {
     super();
@@ -171,14 +185,10 @@ export default class AniwatchService extends Extractor {
       }
       const sourceInformationJson: SourceInformation = await sourceInformationResponse.json();
 
-      if (sourceInformationJson.encrypted) {
-        if (typeof sourceInformationJson.sources === "string") {
-          const encryptionKey = await this._fetchEncryptionKey();
-          this.logger.debug("encryption key", encryptionKey);
-          sourceInformationJson.sources = this._decrypt(sourceInformationJson.sources, encryptionKey);
-          if (!!sourceInformationJson.sourcesBackup && typeof sourceInformationJson.sourcesBackup === "string") {
-            sourceInformationJson.sourcesBackup = this._decrypt(sourceInformationJson.sourcesBackup, encryptionKey);
-          }
+      if (sourceInformationJson.encrypted && typeof sourceInformationJson.sources === "string") {
+        sourceInformationJson.sources = await this._switchDecrypt(sourceInformationJson.sources);
+        if (sourceInformationJson.sourcesBackup && typeof sourceInformationJson.sourcesBackup === "string") {
+          sourceInformationJson.sources = await this._switchDecrypt(sourceInformationJson.sources);
         }
       }
 
@@ -276,33 +286,182 @@ export default class AniwatchService extends Extractor {
     return $;
   }
 
-  private _decrypt(encryptedValue: string, key: string) {
-    const valueBuffer = CryptoJS.AES.decrypt(encryptedValue, key);
-    return JSON.parse(valueBuffer.toString(CryptoJS.enc.Utf8));
+  private async _switchDecrypt(sources: string): Promise<string> {
+    //TODO CHECK THIS ERROR SOURCE
+    if (this._switchPieces) {
+      try {
+        this.logger.debug("switch pieces", this._switchPieces);
+        return this._switchDecryptPieces(sources, this._switchPieces);
+      } catch (error) {
+        this._switchPieces = await this._switchExtractPieces();
+        this.logger.debug("switch pieces", this._switchPieces);
+        return this._switchDecryptPieces(sources, this._switchPieces);
+      }
+    } else {
+      this._switchPieces = await this._switchExtractPieces();
+      this.logger.debug("switch pieces", this._switchPieces);
+      return this._switchDecryptPieces(sources, this._switchPieces);
+    }
   }
 
-  private async _fetchEncryptionKey() {
-    const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
-    const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
-    this.logger.debugFileDump("megacloud-obfuscated-script", "js", obfuscatedScript);
-    const script = await this._deobfuscate(obfuscatedScript);
-    this.logger.debugFileDump("megacloud-script", "js", script);
+  private _switchDecryptPieces(sources: string, pieces: Pieces): string {
+    let key = "";
+    let patchedSources = sources;
+    let globalOffset = 0;
+    for (let i = 0; i < pieces.length; i++) {
+      const { offset, length } = pieces[i];
+      const start = offset + globalOffset;
+      const end = start + length;
+      const piece = sources.slice(start, end);
+      key += piece;
+      patchedSources = patchedSources.replace(piece, "");
+      globalOffset += length;
+    }
+    return this._decrypt(patchedSources, key);
+  }
+
+  private async _switchExtractPieces(): Promise<Pieces> {
+    const script = await this._fetchDeobfuscatedScript();
     const ast = meriyah.parseScript(script, {
       webcompat: true,
       loc: true
     });
-    const encryptFunctionName = this._exctractEncryptFunctionName(ast);
-    if (!encryptFunctionName) {
-      throw new Error("failed to extract the name of the encryption function");
+    this.logger.debugFileDump("megacloud-ast", "json", JSON.stringify(ast, null, 2));
+    const decryptFunctionName = this._exctractDecryptFunctionName(ast);
+    if (!decryptFunctionName) {
+      throw new Error("failed to extract the name of the decryption function");
     }
-    const encryptionKey = this._extractEncryptionKey(ast, encryptFunctionName);
+    let decryptionFunction: meriyah.ESTree.ArrowFunctionExpression | null = null;
+    walkTree(ast, (node) => {
+      if (!decryptionFunction && isVariableDeclaration(node)) {
+        const declarator = node.declarations.find(
+          (declarator) =>
+            declarator &&
+            declarator.init &&
+            isArrowFunctionExpression(declarator.init) &&
+            isBlockStatement(declarator.init.body) &&
+            !!declarator.init.body.body.find(
+              (statement) =>
+                isReturnStatement(statement) &&
+                statement.argument &&
+                isCallExpression(statement.argument) &&
+                isIdentifier(statement.argument.callee) &&
+                statement.argument.callee.name == decryptFunctionName
+            )
+        );
+        if (!!declarator && declarator.init && isArrowFunctionExpression(declarator.init)) {
+          decryptionFunction = declarator.init;
+        }
+      }
+    });
+    if (!decryptionFunction) {
+      throw new Error("an error occurred while extracting the pieces of the encryption key, no switch decryption function");
+    }
+    const blockStatement = (decryptionFunction as meriyah.ESTree.ArrowFunctionExpression).body as meriyah.ESTree.BlockStatement;
+    const loop: meriyah.ESTree.ForStatement | undefined = blockStatement.body.find((statement) => isForStatement(statement)) as
+      | meriyah.ESTree.ForStatement
+      | undefined;
+    if (!loop) {
+      throw new Error("an error occurred while extracting the pieces of the encryption key, no loop");
+    }
+    const lengthName = ((loop.test as meriyah.ESTree.BinaryExpression).right as meriyah.ESTree.Identifier).name;
+    const length = this._extractConstAssignment(ast, lengthName);
+    const loopBody: meriyah.ESTree.BlockStatement = loop.body as BlockStatement;
+    const switchStatement: meriyah.ESTree.SwitchStatement | undefined = loopBody.body.find((statement) => isSwitchStatement(statement)) as
+      | meriyah.ESTree.SwitchStatement
+      | undefined;
+    if (!switchStatement) {
+      throw new Error("an error occurred while extracting the pieces of the encryption key, no switch statement");
+    }
+    const pieces: Pieces = [];
+    for (let i = 0; i < length; i++) {
+      const switchCase = switchStatement.cases.find(
+        (switchCase) => isLiteral(switchCase.test as meriyah.ESTree.Literal) && (switchCase.test as meriyah.ESTree.Literal).value === i
+      );
+      if (!switchCase) {
+        throw new Error("an error occurred while extracting the pieces of the encryption key, no case");
+      }
+      const expressionStatement: meriyah.ESTree.ExpressionStatement | undefined = switchCase.consequent.find((statement) =>
+        isExpressionStatement(statement)
+      ) as meriyah.ESTree.ExpressionStatement | undefined;
+      if (!expressionStatement) {
+        throw new Error("an error occurred while extracting a piece of the encryption key, no case body");
+      }
+      const sequenceExpression: meriyah.ESTree.SequenceExpression = expressionStatement.expression as meriyah.ESTree.SequenceExpression;
+      if (sequenceExpression.expressions.length !== 2) {
+        throw new Error("an error occurred while extracting a piece of the encryption key, too many assignments");
+      }
+      const offsetName = this._extractRightAssignment(sequenceExpression.expressions[0]);
+
+      const lengthName = this._extractRightAssignment(sequenceExpression.expressions[1]);
+      if (!offsetName || !lengthName) {
+        throw new Error("an error occurred while extracting a piece of the encryption key, assignments without values");
+      }
+      const offset = this._extractConstAssignment(ast, offsetName);
+      const length = this._extractConstAssignment(ast, lengthName);
+      pieces.push({ offset: offset, length: length });
+    }
+    return pieces;
+  }
+
+  private _extractConstAssignment(ast: meriyah.ESTree.Program, name: string): number {
+    let value: number | null = null;
+    walkTree(ast, (node) => {
+      if (!value && isVariableDeclaration(node) && node.kind === "const") {
+        const declarator = node.declarations.find(
+          (declarator) => declarator && declarator.init && isIdentifier(declarator.id) && declarator.id.name === name
+        );
+        if (!!declarator && declarator.init && isLiteral(declarator.init)) {
+          value = Number(declarator.init.value);
+        }
+      }
+    });
+    if (!value) {
+      throw new Error(`could not find constant ${name} in ast`);
+    }
+    return value;
+  }
+
+  private _extractRightAssignment(expression: meriyah.ESTree.Expression): string | null {
+    return ((expression as meriyah.ESTree.AssignmentExpression).right as meriyah.ESTree.Identifier).name;
+  }
+
+  private async _substringDecrypt(sources: string): Promise<string> {
+    //TODO CHECK THIS ERROR SOURCE
+    if (this._substringKey) {
+      try {
+        this.logger.debug("encryption key", this._substringKey);
+        return this._decrypt(sources, this._substringKey);
+      } catch (error) {
+        this._substringKey = await this._fetchSubstringEncryptionKey();
+        this.logger.debug("encryption key", this._substringKey);
+        return this._decrypt(sources, this._substringKey);
+      }
+    } else {
+      this._substringKey = await this._fetchSubstringEncryptionKey();
+      this.logger.debug("encryption key", this._substringKey);
+      return this._decrypt(sources, this._substringKey);
+    }
+  }
+
+  private async _fetchSubstringEncryptionKey(): Promise<string> {
+    const script = await this._fetchDeobfuscatedScript();
+    const ast = meriyah.parseScript(script, {
+      webcompat: true,
+      loc: true
+    });
+    const decryptFunctionName = this._exctractDecryptFunctionName(ast);
+    if (!decryptFunctionName) {
+      throw new Error("failed to extract the name of the decryption function");
+    }
+    const encryptionKey = this._extractSubstringEncryptionKey(ast, decryptFunctionName);
     if (!encryptionKey) {
       throw new Error("failed to extract the value of the encryption key");
     }
     return encryptionKey;
   }
 
-  private _extractEncryptionKey(ast: meriyah.ESTree.Program, encryptFunctionName: string) {
+  private _extractSubstringEncryptionKey(ast: meriyah.ESTree.Program, decryptFunctionName: string): string | null {
     let encryptionKey: string | null = null;
     walkTree(ast, (node) => {
       if (!encryptionKey && isVariableDeclaration(node)) {
@@ -315,7 +474,7 @@ export default class AniwatchService extends Extractor {
                 statement.argument &&
                 isCallExpression(statement.argument) &&
                 isIdentifier(statement.argument.callee) &&
-                statement.argument.callee.name == encryptFunctionName
+                statement.argument.callee.name == decryptFunctionName
             );
             return decryptedValueReturnStatement;
           }
@@ -388,10 +547,10 @@ export default class AniwatchService extends Extractor {
     return encryptionKey;
   }
 
-  private _exctractEncryptFunctionName(ast: meriyah.ESTree.Program) {
-    let encryptFunctionName: null | string = null;
+  private _exctractDecryptFunctionName(ast: meriyah.ESTree.Program) {
+    let decryptFunctionName: null | string = null;
     walkTree(ast, (node) => {
-      if (!encryptFunctionName && isVariableDeclaration(node)) {
+      if (!decryptFunctionName && isVariableDeclaration(node)) {
         const variableDeclarator = node.declarations.find((declarator) => {
           if (declarator && isIdentifier(declarator.id) && declarator.init) {
             if (isArrowFunctionExpression(declarator.init)) {
@@ -429,11 +588,25 @@ export default class AniwatchService extends Extractor {
           return false;
         });
         if (variableDeclarator && isIdentifier(variableDeclarator.id)) {
-          encryptFunctionName = variableDeclarator.id.name;
+          decryptFunctionName = variableDeclarator.id.name;
         }
       }
     });
-    return encryptFunctionName;
+    return decryptFunctionName;
+  }
+
+  private async _fetchDeobfuscatedScript(): Promise<string> {
+    const scriptUrl = "https://megacloud.tv/js/player/a/prod/e1-player.min.js";
+    const obfuscatedScript = await fetch(scriptUrl).then((response) => response.text());
+    this.logger.debugFileDump("megacloud-obfuscated-script", "js", obfuscatedScript);
+    const script = await this._deobfuscate(obfuscatedScript);
+    this.logger.debugFileDump("megacloud-script", "js", script);
+    return script;
+  }
+
+  private _decrypt(encryptedValue: string, key: string): string {
+    const valueBuffer = CryptoJS.AES.decrypt(encryptedValue, key);
+    return JSON.parse(valueBuffer.toString(CryptoJS.enc.Utf8));
   }
 
   private async _deobfuscate(obfuscatedScript: string) {
