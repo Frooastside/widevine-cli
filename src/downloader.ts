@@ -67,7 +67,6 @@ export default class App {
       RecaptchaPlugin({
         provider: new Holz((cid: string, captcha: CaptchaInfo) => {
           this._logger.warn(
-            undefined,
             `A Captcha has to be solved. Please use the Holz-Dekstop application to solve the solve the Captcha with the Id '${cid}'. ${captcha.url}`
           );
         }),
@@ -138,7 +137,7 @@ export default class App {
           await this._removeTemporaryFiles(download);
         }
       } catch (error) {
-        this._logger.warn(undefined, "an error occurred while deleting temporary files");
+        this._logger.warn("an error occurred while deleting temporary files");
       }
     } else {
       await this._collectDecryptionKeys(metadata, this._cache);
@@ -227,7 +226,6 @@ export default class App {
       if (!container) {
         container = uuidv4();
         this._logger.warn(
-          undefined,
           `you specified to skip questions but no title was found, using "${container}" for now`,
           isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
@@ -238,7 +236,6 @@ export default class App {
         if (!title) {
           title = uuidv4();
           this._logger.warn(
-            undefined,
             `you specified to skip questions but no title was found, using "${title}" for now`,
             isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
           );
@@ -248,7 +245,7 @@ export default class App {
         const episodeOutput: Output = {
           files: episode.files.filter((file) => {
             if (isMediaDownload(file) && (file as DownloadedMediaFile).encrypted) {
-              this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+              this._logger.warn(`Had to skip ${file.path} because it remains encrpyted.`);
               return false;
             } else {
               return true;
@@ -271,7 +268,6 @@ export default class App {
       if (!title) {
         title = uuidv4();
         this._logger.warn(
-          undefined,
           `you specified to skip questions but no title was found, using "${title}" for now`,
           isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
@@ -281,7 +277,7 @@ export default class App {
       const output: Output = {
         files: input.files.filter((file) => {
           if (isMediaDownload(file) && (file as DownloadedMediaFile).encrypted) {
-            this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+            this._logger.warn(`Had to skip ${file.path} because it remains encrpyted.`);
             return false;
           } else {
             return true;
@@ -297,9 +293,11 @@ export default class App {
   }
 
   private async _title(initial: string | undefined, container: boolean): Promise<string | null> {
-    let title: string | undefined = initial;
+    const containerRequired = this._config.output.includes("{series_name}");
+    const titleRequired = this._config.output.includes("{title}");
+    let title: string | undefined = (container ? this._config.container : this._config.title) || initial;
     if (!title) {
-      if (this._config.skipQuestions) {
+      if (this._config.skipQuestions || !(container ? containerRequired : titleRequired)) {
         return null;
       } else {
         const response = await enquirer.prompt<{ title: string }>({
@@ -315,13 +313,13 @@ export default class App {
   }
 
   private async _index(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
-    let index: number | undefined | null = input.metadata.index;
+    const episodeNumberRequired = this._config.output.includes("{episode_number}");
+    let index: number | undefined | null = Number(this._config.episode) || input.metadata.index;
     if (index === undefined) {
-      if (this._config.skipQuestions) {
+      if (this._config.skipQuestions || !episodeNumberRequired) {
         index = !!container ? 0 : null;
         this._logger.warn(
-          undefined,
-          `you specified to skip questions but no episode index was found, using "${index}" for now`,
+          `you specified to skip questions or don't use the value in the output template, and no episode index was found, using "${index}" as default`,
           isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
       } else {
@@ -339,13 +337,13 @@ export default class App {
   }
 
   private async _season(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
-    let season: number | undefined | null = input.metadata.season;
+    const seasonNumberRequired = this._config.output.includes("{season_number}");
+    let season: number | undefined | null = Number(this._config.season) || input.metadata.season;
     if (season === undefined) {
-      if (this._config.skipQuestions) {
+      if (this._config.skipQuestions || !seasonNumberRequired) {
         season = !!container ? 1 : null;
         this._logger.warn(
-          undefined,
-          `you specified to skip questions but we dont know in which season this episode is, using "${season}" for now`,
+          `you specified to skip questions or don't use the value in the output template, we don't know the season this episode is in, using "${season}" as default`,
           isManifest(input.metadata.source) ? input.metadata.source.url : input.metadata.source
         );
       } else {
