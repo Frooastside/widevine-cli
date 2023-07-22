@@ -2,6 +2,7 @@ import { Cookie } from "./cookie-parser.js";
 import { LicenseInformation } from "./drm.js";
 import { globalConfig } from "./index.js";
 import { Logger } from "./io.js";
+import { Language } from "./iso.js";
 
 export abstract class Extractor {
   private _logger?: Logger;
@@ -41,6 +42,9 @@ export abstract class Downloader {
   }
 }
 
+export type DataType = "container" | "episode";
+export type FileType = "media" | "subtitle";
+
 export function isContainerDownload(download: Download): download is ContainerDownload {
   return download.type === "container";
 }
@@ -49,13 +53,56 @@ export function isContainerMetadata(metadata: Metadata): metadata is ContainerMe
   return metadata.type === "container";
 }
 
-export interface Output {
-  title: string;
-  container: string | null;
-  season: number | null;
-  index: number | null;
-  files: string[];
+export function isMediaDownload(downloadedFile: DownloadedFile): downloadedFile is DownloadedFile {
+  return downloadedFile.type === "media";
 }
+
+export function isManifest(source: string | Source): source is Source {
+  return typeof source === "object" && typeof source.url === "string";
+}
+
+export interface Format {
+  id: string;
+  bitrate?: number;
+  width?: number;
+  height?: number;
+  sampleRate?: number;
+}
+
+export type Source = {
+  url: string;
+  cookies?: Cookie[];
+  headers?: HeadersInit;
+  cleanup?: () => void;
+};
+
+export type Metadata = ContainerMetadata | EpisodeMetadata;
+
+interface MetadataBase {
+  type: DataType;
+  title?: string;
+  source: string | Source;
+}
+
+export interface ContainerMetadata extends MetadataBase {
+  type: "container";
+  contents?: EpisodeMetadata[];
+}
+
+export interface EpisodeMetadata extends MetadataBase {
+  type: "episode";
+  container?: string | null;
+  season?: number | null;
+  index?: number | null;
+  licenseInformation?: LicenseInformation;
+  language?: Language;
+  subtitles?: SubtitleMetadata[];
+}
+
+export type SubtitleMetadata = {
+  source: Source;
+  language?: Language;
+};
 
 export type Download = ContainerDownload | EpisodeDownload;
 
@@ -72,61 +119,33 @@ export interface ContainerDownload extends DownloadBase {
 
 export interface EpisodeDownload extends DownloadBase {
   type: "episode";
-  files: DownloadedMediaFile[];
-  subtitles?: DownloadedSubtitleFile[];
   metadata: EpisodeMetadata;
+  files: DownloadedFile[];
 }
 
-export interface DownloadedMediaFile {
+export type DownloadedFile = DownloadedMediaFile | DownloadedSubtitleFile;
+
+interface DownloadedFileBase {
+  type: FileType;
   path: string;
+  streams: number;
+  language?: Language;
+}
+
+export interface DownloadedMediaFile extends DownloadedFileBase {
+  type: "media";
   encrypted: boolean;
   format: Format;
 }
 
-export interface DownloadedSubtitleFile {
-  path: string;
-  language?: string;
+export interface DownloadedSubtitleFile extends DownloadedFileBase {
+  type: "subtitle";
 }
 
-export interface Format {
-  id: string;
-  bitrate?: number;
-  width?: number;
-  height?: number;
-  sampleRate?: number;
+export interface Output {
+  title: string;
+  container: string | null;
+  season: number | null;
+  index: number | null;
+  files: DownloadedFile[];
 }
-
-export type Metadata = ContainerMetadata | EpisodeMetadata;
-
-interface MetadataBase {
-  type: DataType;
-  title?: string;
-  source: string | Source;
-}
-
-export function isManifest(source: string | Source): source is Source {
-  return typeof source === "object" && typeof source.url === "string";
-}
-
-export interface ContainerMetadata extends MetadataBase {
-  type: "container";
-  contents?: EpisodeMetadata[];
-}
-
-export interface EpisodeMetadata extends MetadataBase {
-  type: "episode";
-  container?: string | null;
-  season?: number | null;
-  index?: number | null;
-  licenseInformation?: LicenseInformation;
-  subtitles?: Source[];
-}
-
-export type DataType = "container" | "episode";
-
-export type Source = {
-  url: string;
-  cookies?: Cookie[];
-  headers?: HeadersInit;
-  cleanup?: () => void;
-};

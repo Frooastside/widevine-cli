@@ -1,3 +1,5 @@
+import { diceCoefficient } from "dice-coefficient";
+
 const languages: Language[] = [
   {
     iso_639_1: "aa",
@@ -911,12 +913,16 @@ const languages: Language[] = [
   }
 ];
 
-type Language = {
+export type Language = {
   iso_639_1: string;
   iso_639_3: string;
   iso_name: string;
 };
-type Dictionary = Record<string, Language>;
+export type Dictionary = Record<string, Language>;
+export type Match = {
+  probability: number;
+  language: Language;
+};
 export const iso_639_1: Dictionary = languages.reduce(
   (accumulator, current) => ((accumulator[current.iso_639_1] = current), accumulator),
   {} as Dictionary
@@ -929,5 +935,16 @@ export const iso_name: Dictionary = languages.reduce(
   (accumulator, current) => ((accumulator[current.iso_name] = current), accumulator),
   {} as Dictionary
 );
+
+export function findLanguageByName(value: string): Match {
+  let match: Match = { probability: 0, language: languages[0] };
+  for (const language of languages) {
+    const probability = diceCoefficient(value, language.iso_name);
+    if (probability > match.probability) {
+      match = { probability: probability, language: language };
+    }
+  }
+  return match;
+}
 
 export default languages;

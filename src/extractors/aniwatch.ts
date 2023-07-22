@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import CryptoJS from "crypto-js";
 import { Deobfuscator } from "deobfuscator";
+import { BlockStatement } from "deobfuscator/dist/util/types.js";
 import * as meriyah from "meriyah";
 import {
   isArrowFunctionExpression,
@@ -18,8 +19,8 @@ import {
   walkTree
 } from "../extractor.js";
 import { DownloadConfig } from "../index.js";
+import { findLanguageByName, iso_639_1, iso_639_3 } from "../iso.js";
 import { ContainerMetadata, EpisodeMetadata, Extractor, Metadata } from "../service.js";
-import { BlockStatement } from "deobfuscator/dist/util/types.js";
 
 export interface ContainerData {
   page: string;
@@ -233,7 +234,14 @@ export default class AniwatchService extends Extractor {
         source: {
           url: sourceInformationJson.sources[0].file
         },
-        subtitles: sourceInformationJson.tracks.filter((track) => track.kind === "captions").map((track) => ({ url: track.file }))
+        language: server.dub ? iso_639_1["en"] : iso_639_1["ja"],
+        subtitles: sourceInformationJson.tracks
+          .filter((track) => track.kind === "captions")
+          .map((track) => {
+            const regex = /([a-z]{3})-\d\.vtt$/gi.exec(track.file);
+            const language = (regex ? iso_639_3[regex[1]] : undefined) || findLanguageByName(track.label || "").language;
+            return { source: { url: track.file }, language: language };
+          })
       };
 
       return metadata;
