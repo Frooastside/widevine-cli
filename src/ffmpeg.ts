@@ -19,7 +19,7 @@ export default class FFMPEG {
   }
 
   private async _combineFiles(files: DownloadedFile[], output: string) {
-    let stream: number = 0;
+    let stream = 0;
     const args: ExecutionArguments = [
       "-y",
       files.map((file) => ["-i", `"${file.path}"`]).flat(),

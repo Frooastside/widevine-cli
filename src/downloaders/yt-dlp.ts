@@ -115,7 +115,7 @@ export default class YT_DLP_Downloader extends Downloader {
       const remoteFileName = parsedUrl.substring(parsedUrl.lastIndexOf("/") + 1);
       const fileExtension = extname(remoteFileName);
       const fileName = `${subtitleId}${fileExtension}`;
-      let subtitleContent: string = "";
+      let subtitleContent = "";
       if (fileExtension.toLowerCase() === ".vtt") {
         this.logger.debug("Redoing the VTT File");
         const lines = fetchedSubtitleContent.replaceAll("\r\n", "\n").split("\n");
