@@ -1,12 +1,16 @@
 import chalk from "chalk";
 import cookie from "cookie";
+import { writeFileSync } from "fs";
+import { extname } from "path";
 import ProgressBar from "progress";
 import { v4 as uuidv4 } from "uuid";
 import BinaryExecutor, { ExecutionArguments } from "../binaryExecutor.js";
 import { DownloadConfig, globalConfig } from "../index.js";
+import { iso_639_1 } from "../iso.js";
 import {
   ContainerDownload,
   Download,
+  DownloadedFile,
   DownloadedMediaFile,
   DownloadedSubtitleFile,
   Downloader,
@@ -16,8 +20,6 @@ import {
   isContainerMetadata,
   isManifest
 } from "../service.js";
-import { writeFileSync } from "fs";
-import { extname } from "path";
 
 const binaryExecutor = new BinaryExecutor("yt-dlp");
 
@@ -70,6 +72,7 @@ export default class YT_DLP_Downloader extends Downloader {
     if (!fetchedDownloadMetadata) {
       throw new Error("an error occurred while fetching the metadata");
     }
+    this.logger.debugFileDump("ytdlp-metadata", "json", JSON.stringify(fetchedDownloadMetadata, null, 2));
     const isPlaylist = isPlaylistMetadata(fetchedDownloadMetadata);
     if (isPlaylist) {
       throw new Error("Episodes can't be playlists at the same time");
@@ -77,7 +80,7 @@ export default class YT_DLP_Downloader extends Downloader {
     this.logger.information(
       `Start downloading "${metadata.title ? metadata.title : isManifest(metadata.source) ? metadata.source.url : metadata.source}"`
     );
-    const files: DownloadedMediaFile[] = [];
+    const files: DownloadedFile[] = [];
     for (const format of fetchedDownloadMetadata.requested_downloads) {
       if (format.requested_formats) {
         for (const formatParts of format.requested_formats) {
@@ -88,19 +91,19 @@ export default class YT_DLP_Downloader extends Downloader {
       }
     }
 
-    const subtitles: DownloadedSubtitleFile[] = [];
     for (const subtitle of metadata.subtitles || []) {
+      this.logger.debugJsonDump(subtitle);
       const subtitleId = uuidv4();
-      const cookieHeader = subtitle.cookies
-        ? subtitle.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
+      const cookieHeader = subtitle.source.cookies
+        ? subtitle.source.cookies.map((cookieObject) => cookie.serialize(cookieObject.name, cookieObject.value)).join("; ")
         : undefined;
       const headers: HeadersInit | undefined = cookieHeader
         ? {
-            ...subtitle.headers,
+            ...subtitle.source.headers,
             cookie: cookieHeader
           }
-        : subtitle.headers;
-      const subtitleResponse = await fetch(subtitle.url, {
+        : subtitle.source.headers;
+      const subtitleResponse = await fetch(subtitle.source.url, {
         method: "GET",
         headers: headers
       });
@@ -108,7 +111,7 @@ export default class YT_DLP_Downloader extends Downloader {
         throw new Error("failed to fetch subtitle file");
       }
       const fetchedSubtitleContent = await subtitleResponse.text();
-      const parsedUrl = subtitle.url.replace(/\/$/, "");
+      const parsedUrl = subtitle.source.url.replace(/\/$/, "");
       const remoteFileName = parsedUrl.substring(parsedUrl.lastIndexOf("/") + 1);
       const fileExtension = extname(remoteFileName);
       const fileName = `${subtitleId}${fileExtension}`;
@@ -117,7 +120,6 @@ export default class YT_DLP_Downloader extends Downloader {
         this.logger.debug("Redoing the VTT File");
         const lines = fetchedSubtitleContent.replaceAll("\r\n", "\n").split("\n");
         const newLines: string[] = [];
-        let lastLineType: "empty" | "timings" | "content" = "timings";
         for (let i = 0; i < lines.length; i++) {
           const currentLine = lines[i]?.trim() || "";
           const nextLine = lines[i + 1]?.trim() || "";
@@ -129,29 +131,31 @@ export default class YT_DLP_Downloader extends Downloader {
               : "content";
           const nextLineType =
             nextLine.length === 0 ? "empty" : /(\d{2}:)?\d{2}:\d{2}.\d{3} +--> +(\d{2}:)?\d{2}:\d{2}.\d{3}/gi.test(nextLine) ? "timings" : "content";
-          if (currentLine !== "empty" || nextLineType === "timings") {
+          if (currentLineType !== "empty" || nextLineType === "timings") {
             newLines.push(currentLine);
-            this.logger.debug("writing line", i, lastLineType, currentLineType, nextLineType);
           } else {
-            this.logger.debug("Skipping line", i, lastLineType, currentLineType, nextLineType);
+            newLines.push("<br>");
           }
-          lastLineType = currentLineType;
         }
         subtitleContent = newLines.join("\n");
       } else {
         subtitleContent = fetchedSubtitleContent;
       }
       writeFileSync(fileName, subtitleContent);
-      subtitles.push({
-        path: fileName
-      });
+      const language = subtitle.language || iso_639_1["en"];
+      const subtitleFile: DownloadedSubtitleFile = {
+        type: "subtitle",
+        streams: 1,
+        path: fileName,
+        language: language
+      };
+      files.push(subtitleFile);
     }
 
     const download: EpisodeDownload = {
-      files: files,
       type: "episode",
       metadata: metadata,
-      subtitles: subtitles
+      files: files
     };
     return download;
   }
@@ -202,7 +206,7 @@ export default class YT_DLP_Downloader extends Downloader {
       });
     });
     const file: DownloadedMediaFile = {
-      encrypted: !!format.has_drm,
+      type: "media",
       format: {
         id: format.format_id,
         bitrate: format.tbr ?? format.vbr ?? format.abr,
@@ -210,7 +214,9 @@ export default class YT_DLP_Downloader extends Downloader {
         width: format.width || undefined,
         height: format.height || undefined
       },
-      path: `${fileId}.${format.format_id}.${format.ext}`
+      streams: (format.vcodec ? 1 : 0) + (format.acodec ? 1 : 0),
+      path: `${fileId}.${format.format_id}.${format.ext}`,
+      encrypted: !!format.has_drm
     };
     return file;
   }

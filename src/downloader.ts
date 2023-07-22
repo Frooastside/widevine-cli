@@ -26,6 +26,7 @@ import { Input, Logger } from "./io.js";
 import {
   ContainerDownload,
   Download,
+  DownloadedMediaFile,
   Downloader,
   EpisodeDownload,
   EpisodeMetadata,
@@ -34,7 +35,8 @@ import {
   Output,
   isContainerDownload,
   isContainerMetadata,
-  isManifest
+  isManifest,
+  isMediaDownload
 } from "./service.js";
 
 const rm = promisify(rawRm);
@@ -117,7 +119,9 @@ export default class App {
       }
       const drmFound = !!(
         isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
-      ).filter((file) => file.encrypted).length;
+      )
+        .filter((file) => isMediaDownload(file))
+        .filter((file) => (file as DownloadedMediaFile).encrypted).length;
       if (drmFound) {
         this._logger.extraInformation("DRM protected content was downloaded and has to be decrypted");
       }
@@ -153,16 +157,10 @@ export default class App {
         for (const file of episode.files) {
           await rm(file.path);
         }
-        for (const subtitleFile of episode.subtitles || []) {
-          await rm(subtitleFile.path);
-        }
       }
     } else {
       for (const file of download.files) {
         await rm(file.path);
-      }
-      for (const subtitleFile of download.subtitles || []) {
-        await rm(subtitleFile.path);
       }
     }
   }
@@ -197,24 +195,27 @@ export default class App {
     if (useDirectoryAsOutput) {
       await mkdir(directoryPath, { recursive: true });
       if (combineFiles) {
-        await ffmpeg.combineFiles(output.files, `${directoryPath}/${title}.mkv`);
+        await ffmpeg.combineDownloadedFiles(output.files, `${directoryPath}/${title}.mkv`);
       } else {
         for (const file of output.files) {
-          let filePath = `${directoryPath}/${title}.${extname(file)}`;
+          let filePath = `${directoryPath}/${title}.${extname(file.path)}`;
           if (existsSync(filePath)) {
-            filePath = `${directoryPath}/${title}-${uuidv4()}.${extname(file)}`;
+            filePath = `${directoryPath}/${title}-${uuidv4()}.${extname(file.path)}`;
           }
-          await copyFile(file, filePath);
+          await copyFile(file.path, filePath);
         }
       }
     } else {
       const filePath = basename(outputPath);
       await mkdir(directoryPath, { recursive: true });
       if (combineFiles || !filePath.includes("{ext}")) {
-        await ffmpeg.combineFiles(output.files, `${directoryPath}/${filePath.includes("{ext}") ? filePath.replaceAll("{ext}", "mkv") : filePath}`);
+        await ffmpeg.combineDownloadedFiles(
+          output.files,
+          `${directoryPath}/${filePath.includes("{ext}") ? filePath.replaceAll("{ext}", "mkv") : filePath}`
+        );
       } else {
         for (const file of output.files) {
-          await copyFile(file, `${directoryPath}/${filePath.replaceAll("{ext}", extname(file))}`);
+          await copyFile(file.path, `${directoryPath}/${filePath.replaceAll("{ext}", extname(file.path))}`);
         }
       }
     }
@@ -245,17 +246,14 @@ export default class App {
         const index = await this._index(episode, input);
         const season = await this._season(episode, input);
         const episodeOutput: Output = {
-          files: episode.files
-            .filter((file) => {
-              if (file.encrypted) {
-                this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
-                return false;
-              } else {
-                return true;
-              }
-            })
-            .map((file) => file.path)
-            .concat((episode.subtitles || []).map((subtitle) => subtitle.path)),
+          files: episode.files.filter((file) => {
+            if (isMediaDownload(file) && (file as DownloadedMediaFile).encrypted) {
+              this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+              return false;
+            } else {
+              return true;
+            }
+          }),
           title: title,
           index: index,
           season: season,
@@ -281,17 +279,14 @@ export default class App {
       const index = await this._index(input);
       const season = await this._season(input);
       const output: Output = {
-        files: input.files
-          .filter((file) => {
-            if (file.encrypted) {
-              this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
-              return false;
-            } else {
-              return true;
-            }
-          })
-          .map((file) => file.path)
-          .concat((input.subtitles || []).map((subtitle) => subtitle.path)),
+        files: input.files.filter((file) => {
+          if (isMediaDownload(file) && (file as DownloadedMediaFile).encrypted) {
+            this._logger.warn(undefined, `Had to skip ${file.path} because it remains encrpyted.`);
+            return false;
+          } else {
+            return true;
+          }
+        }),
         title: title,
         index: index,
         season: season,
@@ -495,7 +490,10 @@ export default class App {
       this._handleError("DRM protected content was downloaded but no key identifiers were found");
       return false;
     }
-    for (const file of episode.files.filter((file) => file.encrypted)) {
+    for (const file of episode.files
+      .filter((file) => isMediaDownload(file))
+      .map((file) => file as DownloadedMediaFile)
+      .filter((file) => file.encrypted)) {
       const pssh = psshData[file.format.id];
       if (!pssh) {
         this._handleError(
