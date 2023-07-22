@@ -314,7 +314,10 @@ export default class App {
 
   private async _index(input: EpisodeDownload, container?: ContainerDownload): Promise<number | null> {
     const episodeNumberRequired = this._config.output.includes("{episode_number}");
-    let index: number | undefined | null = Number(this._config.episode) || input.metadata.index;
+    let index: number | undefined | null = container ? Number(this._config.episode) || input.metadata.index : input.metadata.index;
+    if (container && this._config.episode) {
+      this._logger.warn("skipped --episode because we are dealing with multiple episodes and would overwrite them");
+    }
     if (index === undefined) {
       if (this._config.skipQuestions || !episodeNumberRequired) {
         index = !!container ? 0 : null;
