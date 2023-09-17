@@ -31,24 +31,24 @@
     ]
   },
   "scripts": {
-    "start": "pnpm start:aniwatch:season --debug",
-    "start:wakanim:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
-    "start:wakanim:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
-    "start:aniwatch:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889\"",
-    "start:aniwatch:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889?ep=15294\"",
-    "start:raw": "node -r source-map-support/register dist/index.js",
+    "start": "bun run start:aniwatch:season --debug",
+    "start:wakanim:season": "bun run start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
+    "start:wakanim:episode": "bun run start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
+    "start:aniwatch:season": "bun run start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889\"",
+    "start:aniwatch:episode": "bun run start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889?ep=15294\"",
+    "start:raw": "bun run -r source-map-support/register dist/index.js",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
-    "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node --trace-uncaught -r source-map-support/register dist/tests.js\"",
-    "test": "pnpm build && ts-mocha test/**/*.spec.ts",
+    "testscript": "nodemon -e ts -L -w src --exec \"npm run build && bun run --trace-uncaught -r source-map-support/register dist/tests.js\"",
+    "test": "bun run build && ts-mocha test/**/*.spec.ts",
     "lint": "eslint --ext ts .",
     "lint:fix": "eslint --fix --ext ts .",
     "pretty": "prettier --write .",
     "build": "tsc --incremental",
-    "bundle": "pnpm build && esbuild dist/index.js --bundle --platform=node --target=node18 --minify --outfile=build/index.cjs",
-    "package": "pnpm bundle && pkg --compression brotli --output build/wvcli build/index.cjs",
+    "bundle": "bun run build && esbuild dist/index.js --bundle --platform=node --target=node18 --minify --outfile=build/index.cjs",
+    "package": "bun run bundle && pkg --compression brotli --output build/wvcli build/index.cjs",
     "clean": "rimraf dist && rimraf bin && npm run postinstall",
     "prepare": "husky install",
-    "postinstall": "npm run build && node -r source-map-support/register install.js"
+    "postinstall": "npm run build && bun run -r source-map-support/register install.js"
   },
   "devDependencies": {
     "@commander-js/extra-typings": "^11.0.0",
@@ -115,11 +115,6 @@
     "tar-stream": "^3.1.6",
     "uuid": "^9.0.0",
     "wakanim-api": "^0.1.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "clone-deep": "$clone-deep"
-    }
   },
   "overrides": {
     "clone-deep": "$clone-deep"

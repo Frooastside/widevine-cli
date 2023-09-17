@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { exit } from "process";
 
 if (!existsSync("dist")) {
-  execSync("pnpm build");
+  execSync("bun run build");
 }
 
 try {
