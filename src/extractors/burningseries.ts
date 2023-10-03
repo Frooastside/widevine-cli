@@ -156,7 +156,10 @@ export default class BurningSeriesService extends Extractor {
 
       let sourceUrl: string | undefined;
       try {
-        const serverSpecificUrl = servers.find((server) => server.name === "VOE")?.url ?? "";
+        const serverSpecificUrl = servers.find((server) => server.name === "VOE")?.url;
+        if (!serverSpecificUrl) {
+          throw new Error("no voe linked");
+        }
         this.logger.debugJsonDump(serverSpecificUrl);
         const embed = await this.fetchEmbed(pages, serverSpecificUrl);
         this.logger.debugJsonDump(embed);
@@ -166,7 +169,10 @@ export default class BurningSeriesService extends Extractor {
         }
         sourceUrl = voeResult[1];
       } catch (error) {
-        const serverSpecificUrl = servers.find((server) => server.name === "Vidoza")?.url ?? "";
+        const serverSpecificUrl = servers.find((server) => server.name === "Vidoza")?.url;
+        if (!serverSpecificUrl) {
+          throw new Error("no vidoza linked");
+        }
         this.logger.debugJsonDump(serverSpecificUrl);
         const embed = await this.fetchEmbed(pages, serverSpecificUrl);
         this.logger.debugJsonDump(embed);
