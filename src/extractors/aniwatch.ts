@@ -279,13 +279,13 @@ export default class AniwatchService extends Extractor {
   }
 
   private async _fetchHtmlContent(url: string) {
-    const episodeListResponse = await fetch(url, {
+    const response = await fetch(url, {
       method: "GET"
     });
-    if (!episodeListResponse.ok) {
+    if (!response.ok) {
       throw new Error("an error occurred while fetching the episode list");
     }
-    const jsonRepsonse = await episodeListResponse.json();
+    const jsonRepsonse = await response.json();
     if (!jsonRepsonse.status) {
       throw new Error("an error occurred while fetching the episode list, server status is bad");
     }
