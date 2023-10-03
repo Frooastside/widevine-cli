@@ -31,11 +31,13 @@
     ]
   },
   "scripts": {
-    "start": "pnpm start:aniwatch:season --debug",
+    "start": "pnpm start:burningseries:season --debug --visual",
     "start:wakanim:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
     "start:wakanim:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
     "start:aniwatch:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889\"",
     "start:aniwatch:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889?ep=15294\"",
+    "start:burningseries:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://bs.to/serie/Hannibal/\"",
+    "start:burningseries:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://bs.to/serie/Hannibal/2/4-Honig\"",
     "start:raw": "node -r source-map-support/register dist/index.js",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node --trace-uncaught -r source-map-support/register dist/tests.js\"",

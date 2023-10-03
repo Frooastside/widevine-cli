@@ -38,6 +38,7 @@ import {
   isManifest,
   isMediaDownload
 } from "./service.js";
+import BurningSeriesService from "./extractors/burningseries.js";
 
 const rm = promisify(rawRm);
 
@@ -70,7 +71,7 @@ export default class App {
             `A Captcha has to be solved. Please use the Holz-Dekstop application to solve the solve the Captcha with the Id '${cid}'. ${captcha.url}`
           );
         }),
-        visualFeedback: true,
+        visualFeedback: false,
         throwOnError: false,
         solveInViewportOnly: false,
         solveScoreBased: true,
@@ -80,7 +81,7 @@ export default class App {
 
     initializeCookieJar(config);
 
-    this._extractors = [new WakanimService(config), new AniwatchService(config)];
+    this._extractors = [new WakanimService(config), new AniwatchService(config), new BurningSeriesService(config)];
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config);
