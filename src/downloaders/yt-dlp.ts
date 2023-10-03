@@ -171,7 +171,7 @@ export default class YT_DLP_Downloader extends Downloader {
       ["--output-na-placeholder", "0"],
       ["--progress-template", "\"download:[download_info];%(progress.downloaded_bytes)s;%(progress.total_bytes)s\""],
       ["--output", `"${fileId}.%(format_id)s.%(ext)s"`],
-      `${format.manifest_url ?? format.url}`
+      `"${format.manifest_url ?? format.url}"`
     ];
     const progressBar: ProgressBar = this._createProgressBar(format);
     const child = await binaryExecutor.spawn(args);
@@ -252,7 +252,7 @@ export async function fetchDownloadMetadata(url: string, fileId: string): Promis
     "--allow-unplayable-formats",
     "--dump-single-json",
     ["--output", `"${fileId}.%(format_id)s.%(ext)s"`],
-    `${url}`
+    `"${url}"`
   ];
   const stdout = await binaryExecutor.execute(args);
   return JSON.parse(stdout);
