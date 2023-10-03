@@ -154,17 +154,33 @@ export default class BurningSeriesService extends Extractor {
       this.logger.debug("episode", title, container);
       this.logger.debugJsonDump(servers);
 
-      const serverSpecificUrl = servers.find((server) => server.name === "VOE")?.url ?? "";
-      this.logger.debugJsonDump(serverSpecificUrl);
-
-      const embed = await this.fetchEmbed(pages, serverSpecificUrl);
-      this.logger.debugJsonDump(embed);
-
-      const voeResult = /{\s+'hls':\s+'([^']+)',\s+'video_height':\s+([0-9]+).*\s+}/gim.exec(await (await fetch(embed.link)).text());
-      if (!voeResult) {
-        throw new Error("voe error");
+      let sourceUrl: string | undefined;
+      try {
+        const serverSpecificUrl = servers.find((server) => server.name === "VOE")?.url ?? "";
+        this.logger.debugJsonDump(serverSpecificUrl);
+        const embed = await this.fetchEmbed(pages, serverSpecificUrl);
+        this.logger.debugJsonDump(embed);
+        const voeResult = /{\s+'hls':\s+'([^']+)',\s+'video_height':\s+([0-9]+).*\s+}/gim.exec(await (await fetch(embed.link)).text());
+        if (!voeResult) {
+          throw new Error("voe error");
+        }
+        sourceUrl = voeResult[1];
+      } catch (error) {
+        const serverSpecificUrl = servers.find((server) => server.name === "Vidoza")?.url ?? "";
+        this.logger.debugJsonDump(serverSpecificUrl);
+        const embed = await this.fetchEmbed(pages, serverSpecificUrl);
+        this.logger.debugJsonDump(embed);
+        const vidozaResult = /{\s*src:\s*"([^"]+)",\s*type:\s*"video\/mp4",\s*label:\s*"[a-zA-Z]+",\s*res:\s*"([0-9]+)"}/gim.exec(
+          await (await fetch(embed.link)).text()
+        );
+        if (!vidozaResult) {
+          throw new Error("vidoza error");
+        }
+        sourceUrl = vidozaResult[1];
       }
-      const sourceUrl = voeResult[1];
+      if (!sourceUrl) {
+        throw new Error("all provider error");
+      }
 
       const metadata: Metadata = {
         type: "episode",
