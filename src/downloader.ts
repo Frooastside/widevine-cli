@@ -16,10 +16,7 @@ import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 import { initializeCookieStore as initializeCookieJar } from "./cookie-parser.js";
 import YT_DLP_Downloader from "./downloaders/yt-dlp.js";
-import DrmSolver from "./drm.js";
-import AniwatchService from "./extractors/aniwatch.js";
 import GenericExtractor from "./extractors/generic.js";
-import WakanimService from "./extractors/wakanim.js";
 import FFMPEG from "./ffmpeg.js";
 import { DownloadConfig, globalConfig } from "./index.js";
 import { Input, Logger } from "./io.js";
@@ -29,12 +26,10 @@ import {
   DownloadedMediaFile,
   Downloader,
   EpisodeDownload,
-  EpisodeMetadata,
   Extractor,
   Metadata,
   Output,
   isContainerDownload,
-  isContainerMetadata,
   isManifest,
   isMediaDownload
 } from "./service.js";
@@ -45,7 +40,6 @@ export default class App {
   private _config: DownloadConfig;
   private _logger: Logger;
   private _io: Input;
-  private _drm: DrmSolver;
 
   private _extractors: Extractor[];
   private _genericExtractor: Extractor;
@@ -59,7 +53,6 @@ export default class App {
     this._config = config;
     this._logger = new Logger("wvcli", globalConfig);
     this._io = new Input();
-    this._drm = new DrmSolver(config);
 
     puppeteer.use(StealthPlugin());
     puppeteer.use(AdblockerPlugin());
@@ -80,7 +73,7 @@ export default class App {
 
     initializeCookieJar(config);
 
-    this._extractors = [new WakanimService(config), new AniwatchService(config)];
+    this._extractors = [];
     this._genericExtractor = new GenericExtractor();
     this._downloaders = [];
     this._genericDownloader = new YT_DLP_Downloader(this._config);
@@ -111,43 +104,27 @@ export default class App {
     if (!metadata) {
       return;
     }
-    if (!this._config.onlyDrm) {
-      const download: Download | undefined = await this._download(metadata);
-      if (!download) {
-        return;
+    const download: Download | undefined = await this._download(metadata);
+    if (!download) {
+      return;
+    }
+    const drmFound = !!(
+      isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
+    )
+      .filter((file) => isMediaDownload(file))
+      .filter((file) => (file as DownloadedMediaFile).encrypted).length;
+    if (drmFound) {
+      this._logger.extraInformation("DRM protected content was downloaded and can't be decrypted by this application");
+    }
+    const output = await this._handleMissingInformation(download);
+    this._logger.debugJsonDump(output);
+    await this._handleOutputs(output);
+    try {
+      if (!this._config.keepTemporaryFiles) {
+        await this._removeTemporaryFiles(download);
       }
-      const drmFound = !!(
-        isContainerDownload(download) ? (download.contents ?? <EpisodeDownload[]>[]).flatMap((episode) => episode.files) : download.files
-      )
-        .filter((file) => isMediaDownload(file))
-        .filter((file) => (file as DownloadedMediaFile).encrypted).length;
-      if (drmFound) {
-        this._logger.extraInformation("DRM protected content was downloaded and has to be decrypted");
-      }
-      if (drmFound && !this._config.skipDrm) {
-        if (!(await this._decryptFiles(download, this._cache))) {
-          return;
-        }
-      }
-      const output = await this._handleMissingInformation(download);
-      this._logger.debugJsonDump(output);
-      await this._handleOutputs(output);
-      try {
-        if (!this._config.keepTemporaryFiles) {
-          await this._removeTemporaryFiles(download);
-        }
-      } catch (error) {
-        this._logger.warn("an error occurred while deleting temporary files");
-      }
-    } else {
-      await this._collectDecryptionKeys(metadata, this._cache);
-      for (const format of Object.keys(this._cache)) {
-        const psshData = this._cache[format];
-        this._logger.information(`Format "${format}":`);
-        for (const keyContainer of psshData) {
-          this._logger.information(`kid:key ${keyContainer.kid}:${keyContainer.key}`);
-        }
-      }
+    } catch (error) {
+      this._logger.warn("an error occurred while deleting temporary files");
     }
   }
   private async _removeTemporaryFiles(download: Download) {
@@ -426,105 +403,6 @@ export default class App {
       this._handleError(error);
       return;
     }
-  }
-
-  private async _collectDecryptionKeys(metadata: Metadata, cache: Record<string, KeyContainer[]>): Promise<void> {
-    if (isContainerMetadata(metadata)) {
-      for (const episode of metadata.contents ?? <EpisodeMetadata[]>[]) {
-        await this._collectDecryptionKey(episode, cache);
-      }
-    } else {
-      await this._collectDecryptionKey(metadata, cache);
-    }
-    return;
-  }
-
-  private async _collectDecryptionKey(metadata: EpisodeMetadata, cache: Record<string, KeyContainer[]>): Promise<void> {
-    const licenseInformation = metadata.licenseInformation;
-    if (!licenseInformation) {
-      return;
-    }
-    const psshData = licenseInformation.psshData;
-    if (!psshData) {
-      return;
-    }
-    for (const format of Object.keys(psshData)) {
-      const pssh = psshData[format];
-      const keyContainers: KeyContainer[] =
-        cache[pssh.toString("base64")] ||
-        (await this._drm.solveDrm({
-          url: licenseInformation.url,
-          cookies: licenseInformation.cookies,
-          headers: licenseInformation.headers,
-          pssh
-        }));
-      if (!cache[pssh.toString("base64")]) {
-        cache[pssh.toString("base64")] = keyContainers;
-      }
-    }
-    return;
-  }
-
-  private async _decryptFiles(download: Download, cache: Record<string, KeyContainer[]>): Promise<boolean> {
-    if (isContainerDownload(download)) {
-      for (const episode of download.contents ?? <EpisodeDownload[]>[]) {
-        if (!(await this._decryptEpisode(episode, cache))) {
-          return false;
-        }
-      }
-    } else {
-      if (!(await this._decryptEpisode(download, cache))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private async _decryptEpisode(episode: EpisodeDownload, cache: Record<string, KeyContainer[]>): Promise<boolean> {
-    const licenseInformation = episode.metadata.licenseInformation;
-    if (!licenseInformation) {
-      this._handleError("DRM protected content was downloaded but there is no license information");
-      return false;
-    }
-    const psshData = licenseInformation.psshData;
-    if (!psshData) {
-      this._handleError("DRM protected content was downloaded but no key identifiers were found");
-      return false;
-    }
-    for (const file of episode.files
-      .filter((file) => isMediaDownload(file))
-      .map((file) => file as DownloadedMediaFile)
-      .filter((file) => file.encrypted)) {
-      const pssh = psshData[file.format.id];
-      if (!pssh) {
-        this._handleError(
-          `the file ${file.path} is drm protected but the key identifier was not found, [${[
-            ...new Set(Object.keys(psshData).flatMap((formatId) => psshData[formatId].toString("base64")))
-          ].join(", ")}]`
-        );
-        return false;
-      }
-      if (!!cache[pssh.toString("base64")]) {
-        this._logger.extraInformation(`key for pssh "${pssh.toString("base64")}" is cached and will be used`);
-      } else {
-        this._logger.extraInformation(`key for pssh "${pssh.toString("base64")}" is not cached and will be fetched`);
-      }
-      const keyContainers: KeyContainer[] =
-        cache[pssh.toString("base64")] ||
-        (await this._drm.solveDrm({
-          url: licenseInformation.url,
-          cookies: licenseInformation.cookies,
-          headers: licenseInformation.headers,
-          pssh
-        }));
-      if (!cache[pssh.toString("base64")]) {
-        cache[pssh.toString("base64")] = keyContainers;
-      }
-      this._logger.extraInformation(`trying to decrypt "${file.path}"`);
-      await this._drm.decrpytFile(file, keyContainers);
-      this._logger.information(`decrypted "${file.path}"`);
-    }
-    return true;
   }
 
   release() {

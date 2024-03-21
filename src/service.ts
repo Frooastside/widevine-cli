@@ -1,5 +1,4 @@
 import { Cookie } from "./cookie-parser.js";
-import { LicenseInformation } from "./drm.js";
 import { globalConfig } from "./index.js";
 import { Logger } from "./io.js";
 import { Language } from "./iso.js";
@@ -94,7 +93,6 @@ export interface EpisodeMetadata extends MetadataBase {
   container?: string | null;
   season?: number | null;
   index?: number | null;
-  licenseInformation?: LicenseInformation;
   language?: Language;
   subtitles?: SubtitleMetadata[];
 }

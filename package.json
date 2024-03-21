@@ -15,37 +15,30 @@
   },
   "homepage": "https://github.com/frooastside/widevine-cli/",
   "engines": {
-    "node": "^18.x.x",
-    "vscode": "^1.22.0",
-    "npm": "^8.x.x",
-    "pnpm": "8.x.x"
+    "node": ">18"
   },
   "main": "dist/index.js",
   "bin": {},
   "type": "module",
   "pkg": {
     "scripts": "build/**/*.js",
-    "target": "node18",
+    "target": "node20",
     "assets": [
       "./node_modules/lzma-native/**"
     ]
   },
   "scripts": {
-    "start": "pnpm start:aniwatch:season --debug",
-    "start:wakanim:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/show/416/-dakaichi-my-number-1-omu/season/723/staffel-1\"",
-    "start:wakanim:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://www.wakanim.tv/de/v2/catalogue/episode/7500/-dakaichi-my-number-1-omu-staffel-1-folge-1-omu\"",
-    "start:aniwatch:season": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889\"",
-    "start:aniwatch:episode": "pnpm start:raw download --force-local-drm -N 16 -o \"./{series_name}/Season {season_number}/{title} S{season_number}E{episode_number}.{ext}\" --verbose -i \"https://aniwatch.to/watch/dgray-man-hallow-889?ep=15294\"",
+    "start": "npm run start:raw",
     "start:raw": "node -r source-map-support/register dist/index.js",
     "watch": "nodemon -e ts -L -w src --exec \"npm run build && npm run start\"",
     "testscript": "nodemon -e ts -L -w src --exec \"npm run build && node --trace-uncaught -r source-map-support/register dist/tests.js\"",
-    "test": "pnpm build && ts-mocha test/**/*.spec.ts",
+    "test": "npm run build && ts-mocha test/**/*.spec.ts",
     "lint": "eslint --ext ts .",
     "lint:fix": "eslint --fix --ext ts .",
     "pretty": "prettier --write .",
     "build": "tsc --incremental",
-    "bundle": "pnpm build && esbuild dist/index.js --bundle --platform=node --target=node18 --minify --outfile=build/index.cjs",
-    "package": "pnpm bundle && pkg --compression brotli --output build/wvcli build/index.cjs",
+    "bundle": "npm run build && esbuild dist/index.js --bundle --platform=node --target=node18 --minify --outfile=build/index.cjs",
+    "package": "npm run bundle && pkg --compression brotli --output build/wvcli build/index.cjs",
     "clean": "rimraf dist && rimraf bin && npm run postinstall",
     "prepare": "husky install",
     "postinstall": "npm run build && node -r source-map-support/register install.js"
